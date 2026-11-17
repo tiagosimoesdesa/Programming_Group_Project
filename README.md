@@ -25,9 +25,9 @@ Choose **Live app** to use the real backend (start `./start-backend.ps1` too). B
 
 If dependencies and local environment files are already configured, run `./start-backend.ps1` and `./start-mobile.ps1` in two PowerShell terminals from this folder. These launchers use the installed project dependencies without requiring npm/uv on the launch path (Node itself must be available).
 
-Install Node.js 22 LTS or newer (including npm), Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/). Connect both phones and your PC to the same private Wi-Fi.
+Install Node.js 24 LTS or newer (including npm), Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/). Connect both phones and your PC to the same private Wi-Fi.
 
-Use Expo Go compatible with SDK 54. The [Expo compatibility guide](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/) currently identifies SDK 54 as the App Store Expo Go version; Android builds are available at [expo.dev/go](https://expo.dev/go). SDK 54 is intentional for free physical-iPhone testing without a Mac. Later iPhone distribution through EAS cloud builds requires Apple developer enrollment.
+Use Expo Go compatible with SDK 58 from the App Store or Google Play. See the [Expo download page](https://expo.dev/go) for compatible builds. Later iPhone distribution through EAS cloud builds requires Apple developer enrollment.
 
 ## Run the Python backend
 

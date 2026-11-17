@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputInstance,
   View,
 } from "react-native";
 import { authenticate } from "./api";
@@ -32,7 +33,7 @@ export default function AuthScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [focused, setFocused] = useState<"username" | "password" | null>(null);
-  const passwordInput = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInputInstance>(null);
   const valid =
     /^[a-zA-Z0-9_]{3,24}$/.test(username.trim()) &&
     password.length >= 10 &&

@@ -22,8 +22,14 @@ Automated checks were run on Windows during implementation. Physical-device chec
 - PostgreSQL checks are configured in GitHub Actions but have not been run locally; no PostgreSQL service is available on this PC.
 - Supabase and Render integration needs real account credentials and a hosted smoke test.
 
+## SDK 58 upgrade — 17 November 2026
+
+- Upgraded Expo to 58.0.26, React Native to 0.88.1, React to 19.3, and aligned native packages with Expo's compatibility table. Added the required expo-font peer dependency.
+- Updated the login input reference to TextInputInstance for React Native's strict types.
+- Retained TypeScript 5.9.3 because openapi-typescript 7.13 requires TypeScript 5. The Expo install exclusion applies only to this compiler; native dependency validation remains enabled. API type generation and app typechecking pass.
+- iOS, Android, and web production bundles export successfully. Physical-phone verification remains pending.
+- CI now uses Node 24, matching local validation.
+
 ## Dependency audit
 
-The first-release app intentionally uses Expo SDK 54 for App Store Expo Go compatibility. A compatible PostCSS security override is applied. The SDK's older build-tool dependency chain still reports advisories, including a high-severity `image-size` parser denial-of-service issue and moderate glob/minimatch issues. Do not process untrusted local build assets/configurations with this toolchain. The mobile app sends user photos to the Python backend; it does not parse them with Metro's `image-size` package.
-
-The `image-size` fix changes its file-path API, which this Metro release uses, so a blind major-version override would break builds. Upgrade Expo/Metro together and repeat native-device validation before public distribution; this may require a custom iOS development build and Apple developer enrollment. See the current `npm audit` output for exact advisory details.
+The SDK 58 installation reports three moderate advisories in the Expo/fingerprint/minimatch dependency chain. The earlier SDK 54 high-severity build dependency advisory is no longer reported. Do not use npm audit fix --force: npm proposes an incompatible Expo downgrade. Recheck advisories with future compatible Expo patches.

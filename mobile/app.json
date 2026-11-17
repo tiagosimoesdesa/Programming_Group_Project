@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "BEERREAL",
+    "slug": "beerreal",
+    "scheme": "beerreal",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.beerreal.app",
+      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+    },
+    "android": {
+      "package": "com.beerreal.app",
+      "permissions": ["CAMERA"],
+      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow BEERREAL to capture your drink and selfie.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose your BEERREAL profile picture.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

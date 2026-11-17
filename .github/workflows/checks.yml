@@ -1,0 +1,55 @@
+name: Checks
+on: [push, pull_request]
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: beerreal_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      JWT_SECRET: ci-only-random-looking-secret-not-used-in-production
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/beerreal_test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/beerreal_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --frozen
+        working-directory: backend
+      - run: uv run alembic upgrade head && uv run alembic check
+        working-directory: backend
+      - run: uv run pytest -q
+        working-directory: backend
+      - run: uv run python -m scripts.export_openapi
+        working-directory: backend
+      - run: git diff --exit-code backend/openapi.json
+  mobile:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run api:types && npm run typecheck
+        working-directory: mobile
+      - run: git diff --exit-code mobile/src/generated/api.ts
+      - run: npx expo install --check
+        working-directory: mobile
+      - run: npx expo export --platform all --max-workers 2
+        working-directory: mobile

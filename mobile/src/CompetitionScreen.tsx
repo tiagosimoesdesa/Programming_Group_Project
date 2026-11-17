@@ -26,6 +26,7 @@ import {
 import { useCompetition } from "./useCompetition";
 import CameraScreen, { Capture } from "./CameraScreen";
 import { imagePart, request } from "./api";
+import NightRecap from "./NightRecap";
 
 export default function CompetitionScreen({
   id,
@@ -42,7 +43,7 @@ export default function CompetitionScreen({
 }) {
   const { detail, error, connected, refresh, loadMore, loading } =
     useCompetition(id);
-  const [tab, setTab] = useState<"feed" | "ranks">("feed");
+  const [selectedTab, setTab] = useState<"feed" | "ranks" | "recap" | null>(null);
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -90,7 +91,10 @@ export default function CompetitionScreen({
             setBusy(true);
             setActionError("");
             post(`/competitions/${id}/end`)
-              .then(() => refresh())
+              .then(async () => {
+                await refresh();
+                setTab("recap");
+              })
               .catch((e) => setActionError(e.message))
               .finally(() => setBusy(false));
           },
@@ -127,6 +131,7 @@ export default function CompetitionScreen({
     );
   const event = detail.competition;
   const ended = !!event.ended_at;
+  const tab = selectedTab ?? (ended ? "recap" : "feed");
   return (
     <View style={s.root}>
       <ScrollView
@@ -246,7 +251,7 @@ export default function CompetitionScreen({
           </View>
         )}
         <View style={s.tabs}>
-          {(["feed", "ranks"] as const).map((t) => (
+          {(ended ? ["recap", "feed", "ranks"] as const : ["feed", "ranks"] as const).map((t) => (
             <Pressable
               key={t}
               accessibilityRole="tab"
@@ -260,12 +265,12 @@ export default function CompetitionScreen({
                   { color: tab === t ? colors.yellow : colors.muted },
                 ]}
               >
-                {t === "feed" ? "The moments" : "Leaderboard"}
+                {t === "recap" ? "Recap" : t === "feed" ? "Photos" : "Standings"}
               </Text>
             </Pressable>
           ))}
         </View>
-        {tab === "ranks" ? (
+        {tab === "recap" ? <NightRecap detail={detail} /> : tab === "ranks" ? (
           <View style={{ gap: 10 }}>
             {detail.standings.map((person) => (
               <Entrance key={person.id} trigger={person.rank}>

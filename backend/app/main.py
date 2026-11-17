@@ -188,7 +188,15 @@ def detail(event_id: str, before: str | None = None, user: User = Depends(curren
             raise HTTPException(400, "Invalid feed cursor")
         query = query.where((Submission.created_at < cursor.created_at) | ((Submission.created_at == cursor.created_at) & (Submission.id < cursor.id)))
     photos = list(db.scalars(query.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(21)))
-    return {"competition": event_out(db, event), "standings": standings, "feed": [photo_out(db, row) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None}
+    recap = []
+    if event.ended_at:
+        # Independent of feed pagination; deterministic ordering for timestamp ties.
+        for person, count in rows:
+            own = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == person.id)
+            first = db.scalar(own.order_by(Submission.created_at, Submission.id).limit(1)) if count else None
+            last = db.scalar(own.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(1)) if count > 1 else None
+            recap.append({"user": profile(person), "first": photo_out(db, first) if first else None, "last": photo_out(db, last) if last else None})
+    return {"competition": event_out(db, event), "standings": standings, "feed": [photo_out(db, row) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap}
 
 
 @app.post("/competitions/{event_id}/submissions", response_model=PhotoOut, status_code=201)

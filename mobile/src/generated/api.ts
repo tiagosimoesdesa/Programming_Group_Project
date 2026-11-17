@@ -246,6 +246,8 @@ export interface components {
             feed: components["schemas"]["PhotoOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Recap */
+            recap?: components["schemas"]["RecapMoment"][];
         };
         /** EventOut */
         EventOut: {
@@ -296,6 +298,12 @@ export interface components {
             username: string;
             /** Avatar Url */
             avatar_url: string | null;
+        };
+        /** RecapMoment */
+        RecapMoment: {
+            user: components["schemas"]["Profile"];
+            first: components["schemas"]["PhotoOut"] | null;
+            last: components["schemas"]["PhotoOut"] | null;
         };
         /** RefreshIn */
         RefreshIn: {

@@ -613,6 +613,13 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "recap": {
+            "items": {
+              "$ref": "#/components/schemas/RecapMoment"
+            },
+            "type": "array",
+            "title": "Recap"
           }
         },
         "type": "object",
@@ -767,6 +774,40 @@
           "avatar_url"
         ],
         "title": "Profile"
+      },
+      "RecapMoment": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Profile"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "first",
+          "last"
+        ],
+        "title": "RecapMoment"
       },
       "RefreshIn": {
         "properties": {

@@ -71,8 +71,15 @@ class PhotoOut(BaseModel):
     created_at: int
 
 
+class RecapMoment(BaseModel):
+    user: Profile
+    first: PhotoOut | None
+    last: PhotoOut | None
+
+
 class EventDetail(BaseModel):
     competition: EventOut
     standings: list[Standing]
     feed: list[PhotoOut]
     next_cursor: str | None
+    recap: list[RecapMoment] = Field(default_factory=list)

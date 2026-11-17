@@ -203,3 +203,22 @@ def test_dense_rank_groups_and_pagination(client):
     assert len(second["feed"]) == 2
     assert second["next_cursor"] is None
     assert not set(p["id"] for p in first["feed"]) & set(p["id"] for p in second["feed"])
+    assert first["recap"] == []
+    guest, _ = account(client, "recap_guest")
+    empty, _ = account(client, "recap_empty")
+    outsider, _ = account(client, "recap_outsider")
+    for auth in (guest, empty):
+        assert client.post("/competitions/join", headers=auth, json={"code": night["code"]}).status_code == 200
+    only = submit(client, guest, night["id"]).json()
+    client.post(f"/competitions/{night['id']}/end", headers=host)
+    recap = client.get(f"/competitions/{night['id']}", headers=host).json()["recap"]
+    by_name = {item["user"]["username"]: item for item in recap}
+    assert by_name["alex"]["first"]["created_at"] == 1000
+    assert by_name["alex"]["last"]["created_at"] == 1021
+    assert by_name["recap_guest"]["first"]["id"] == only["id"]
+    assert by_name["recap_guest"]["last"] is None
+    assert by_name["recap_empty"]["first"] is None
+    assert by_name["recap_empty"]["last"] is None
+    paged = client.get(f"/competitions/{night['id']}?before={first['next_cursor']}", headers=host).json()
+    assert [item["first"]["id"] if item["first"] else None for item in paged["recap"]] == [item["first"]["id"] if item["first"] else None for item in recap]
+    assert client.get(f"/competitions/{night['id']}", headers=outsider).status_code == 404

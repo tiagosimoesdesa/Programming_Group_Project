@@ -32,4 +32,6 @@ Automated checks were run on Windows during implementation. Physical-device chec
 
 ## Dependency audit
 
+Photo-upload follow-up: SDK 58's multipart converter explicitly rejects the legacy `{ uri, name, type }` descriptor. Replaced it with an expo-file-system File (including missing/empty-file checks) in the shared camera/avatar upload helper. TypeScript and iOS/Android/web bundles pass; successful upload on a physical phone still needs confirmation.
+
 The SDK 58 installation reports three moderate advisories in the Expo/fingerprint/minimatch dependency chain. The earlier SDK 54 high-severity build dependency advisory is no longer reported. Do not use npm audit fix --force: npm proposes an incompatible Expo downgrade. Recheck advisories with future compatible Expo patches.

@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import { File as DeviceFile } from "expo-file-system";
 import type { components } from "./generated/api";
 
 export type Profile = components["schemas"]["Profile"];
@@ -172,5 +173,10 @@ export async function imagePart(uri: string, name: string) {
     const response = await fetch(uri);
     return new File([await response.blob()], name, { type: "image/jpeg" });
   }
-  return { uri, name, type: "image/jpeg" } as unknown as Blob;
+  // SDK 58 uses standards-based fetch: native URI descriptor objects are not
+  // file bodies. DeviceFile implements Blob and supplies the actual image bytes.
+  const file = new DeviceFile(uri);
+  if (!file.exists || file.size === 0)
+    throw new Error("This photo is no longer available. Please retake both photos.");
+  return file;
 }

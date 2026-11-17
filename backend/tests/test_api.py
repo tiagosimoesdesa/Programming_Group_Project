@@ -222,3 +222,75 @@ def test_dense_rank_groups_and_pagination(client):
     paged = client.get(f"/competitions/{night['id']}?before={first['next_cursor']}", headers=host).json()
     assert [item["first"]["id"] if item["first"] else None for item in paged["recap"]] == [item["first"]["id"] if item["first"] else None for item in recap]
     assert client.get(f"/competitions/{night['id']}", headers=outsider).status_code == 404
+
+
+def test_reactions_and_player_filter(client):
+    host, _ = account(client)
+    guest, _ = account(client, "guest")
+    outsider, _ = account(client, "outsider")
+    night = event(client, host)
+    path = f"/competitions/{night['id']}"
+    client.post("/competitions/join", headers=guest, json={"code": night["code"]})
+    photo = submit(client, host, night["id"]).json()
+    guest_photo = submit(client, guest, night["id"]).json()
+    reaction_path = path + f"/photos/{photo['id']}/reaction"
+    assert client.put(reaction_path, headers=outsider, json={"emoji": "❤️"}).status_code == 404
+    for _ in range(2):
+        response = client.put(reaction_path, headers=guest, json={"emoji": "❤️"})
+        assert response.json()["reactions"] == {"❤️": 1}
+    assert client.put(reaction_path, headers=guest, json={"emoji": "🔥"}).json()["reactions"] == {"🔥": 1}
+    visible_photo = next(p for p in client.get(path, headers=guest).json()["feed"] if p["id"] == photo["id"])
+    assert visible_photo["my_reaction"] == "🔥"
+    assert client.put(reaction_path, headers=guest, json={"emoji": None}).json()["reactions"] == {}
+    assert client.put(reaction_path, headers=guest, json={"emoji": "invalid"}).status_code == 422
+    filtered = client.get(path, headers=host, params={"player": guest_photo["user"]["id"]}).json()
+    assert [p["id"] for p in filtered["feed"]] == [guest_photo["id"]]
+    assert all(p["count"] == 1 for p in filtered["standings"])
+
+
+def test_challenges_and_spectators(client):
+    host, _ = account(client)
+    guest, _ = account(client, "guest")
+    third, _ = account(client, "third")
+    watcher, _ = account(client, "watcher")
+    outsider, _ = account(client, "outsider")
+    night = event(client, host)
+    path = f"/competitions/{night['id']}"
+    for auth in (guest, third):
+        client.post("/competitions/join", headers=auth, json={"code": night["code"]})
+    assert client.post(path + "/social/enable", headers=guest).status_code == 403
+    assert client.post(path + "/spectator-invite", headers=guest).status_code == 403
+    code = client.post(path + "/spectator-invite", headers=host).json()["spectator_code"]
+    joined = client.post("/competitions/join", headers=watcher, json={"code": code}).json()
+    assert joined["my_role"] == "spectator" and joined["code"] == "" and joined["participants"] == 3
+    # Rejoining with a participant code never silently broadens a spectator's role.
+    assert client.post("/competitions/join", headers=watcher, json={"code": night["code"]}).json()["my_role"] == "spectator"
+    assert submit(client, watcher, night["id"]).status_code == 403
+    assert client.get(path, headers=watcher).status_code == 200
+    assert len(client.get(path, headers=watcher).json()["standings"]) == 3
+    assert client.get(path + "/social", headers=watcher).json()["spectator_code"] is None
+    assert client.get(path + "/social", headers=outsider).status_code == 404
+    photo = submit(client, host, night["id"]).json()
+    body = {"prompt": "yellow", "submission_id": photo["id"]}
+    assert client.post(path + "/claims", headers=host, json=body).status_code == 409
+    client.post(path + "/social/enable", headers=host)
+    assert client.post(path + "/claims", headers=watcher, json=body).status_code == 403
+    assert client.post(path + "/claims", headers=guest, json=body).status_code == 404
+    for _ in range(2):
+        result = client.post(path + "/claims", headers=host, json=body).json()
+        assert len(result["claims"]) == 1
+    claim = result["claims"][0]
+    assert claim["required"] == 2 and claim["status"] == "pending"
+    vote_path = path + f"/claims/{claim['id']}/vote"
+    for auth in (host, watcher):
+        assert client.put(vote_path, headers=auth, json={"approve": True}).status_code == 403
+    for _ in range(2):
+        assert client.put(vote_path, headers=guest, json={"approve": True}).json()["claims"][0]["approvals"] == 1
+    approved = client.put(vote_path, headers=third, json={"approve": True}).json()
+    assert approved["scores"][photo["user"]["id"]] == 1
+    assert client.put(vote_path, headers=third, json={"approve": False}).json()["scores"] == {}
+    client.post(path + "/end", headers=host)
+    assert client.put(vote_path, headers=third, json={"approve": True}).status_code == 409
+    assert client.post(path + "/claims", headers=host, json=body).status_code == 409
+    assert client.get(path + "/social", headers=watcher).json()["claims"][0]["status"] == "not_approved"
+    assert client.post("/competitions/join", headers=outsider, json={"code": code}).status_code == 409

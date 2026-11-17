@@ -377,6 +377,22 @@
               ],
               "title": "Before"
             }
+          },
+          {
+            "name": "player",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Player"
+            }
           }
         ],
         "responses": {
@@ -510,6 +526,318 @@
           }
         }
       }
+    },
+    "/competitions/{event_id}/photos/{photo_id}/reaction": {
+      "put": {
+        "summary": "React",
+        "operationId": "react_competitions__event_id__photos__photo_id__reaction_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReactionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/social": {
+      "get": {
+        "summary": "Social",
+        "operationId": "social_competitions__event_id__social_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/social/enable": {
+      "post": {
+        "summary": "Enable Challenges",
+        "operationId": "enable_challenges_competitions__event_id__social_enable_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/spectator-invite": {
+      "post": {
+        "summary": "Spectator Invite",
+        "operationId": "spectator_invite_competitions__event_id__spectator_invite_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/claims": {
+      "post": {
+        "summary": "Claim Challenge",
+        "operationId": "claim_challenge_competitions__event_id__claims_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/claims/{claim_id}/vote": {
+      "put": {
+        "summary": "Vote Challenge",
+        "operationId": "vote_challenge_competitions__event_id__claims__claim_id__vote_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "claim_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Claim Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -547,6 +875,88 @@
           "front"
         ],
         "title": "Body_submit_competitions__event_id__submissions_post"
+      },
+      "ChallengeResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "photo": {
+            "$ref": "#/components/schemas/PhotoOut"
+          },
+          "approvals": {
+            "type": "integer",
+            "title": "Approvals"
+          },
+          "required": {
+            "type": "integer",
+            "title": "Required"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "pending",
+              "not_approved"
+            ],
+            "title": "Status"
+          },
+          "can_vote": {
+            "type": "boolean",
+            "title": "Can Vote"
+          },
+          "my_vote": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Vote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "prompt",
+          "photo",
+          "approvals",
+          "required",
+          "status",
+          "can_vote",
+          "my_vote"
+        ],
+        "title": "ChallengeResult"
+      },
+      "ClaimIn": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "enum": [
+              "group",
+              "yellow",
+              "pose"
+            ],
+            "title": "Prompt"
+          },
+          "submission_id": {
+            "type": "string",
+            "title": "Submission Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt",
+          "submission_id"
+        ],
+        "title": "ClaimIn"
       },
       "CreateCompetition": {
         "properties": {
@@ -671,6 +1081,15 @@
           "participants": {
             "type": "integer",
             "title": "Participants"
+          },
+          "my_role": {
+            "type": "string",
+            "enum": [
+              "player",
+              "spectator"
+            ],
+            "title": "My Role",
+            "default": "player"
           }
         },
         "type": "object",
@@ -703,7 +1122,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9]{8}$",
+            "pattern": "^(?:[A-Za-z0-9]{8}|[A-Za-z0-9]{10})$",
             "title": "Code"
           }
         },
@@ -733,6 +1152,24 @@
           "created_at": {
             "type": "integer",
             "title": "Created At"
+          },
+          "reactions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Reactions"
+          },
+          "my_reaction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Reaction"
           }
         },
         "type": "object",
@@ -774,6 +1211,31 @@
           "avatar_url"
         ],
         "title": "Profile"
+      },
+      "ReactionIn": {
+        "properties": {
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "\u2764\ufe0f",
+                  "\ud83d\ude02",
+                  "\ud83d\udd25"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "ReactionIn"
       },
       "RecapMoment": {
         "properties": {
@@ -850,6 +1312,60 @@
           "legal_age"
         ],
         "title": "Register"
+      },
+      "SocialOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "spectator_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spectator Code"
+          },
+          "spectators": {
+            "type": "integer",
+            "title": "Spectators"
+          },
+          "prompts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Prompts"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/ChallengeResult"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Scores"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "spectator_code",
+          "spectators",
+          "prompts",
+          "claims",
+          "scores"
+        ],
+        "title": "SocialOut"
       },
       "Standing": {
         "properties": {
@@ -953,6 +1469,19 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoteIn": {
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approve"
+        ],
+        "title": "VoteIn"
       }
     },
     "securitySchemes": {

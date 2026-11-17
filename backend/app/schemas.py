@@ -43,7 +43,7 @@ class CreateCompetition(BaseModel):
 
 
 class JoinCompetition(BaseModel):
-    code: str = Field(pattern=r"^[A-Za-z0-9]{8}$")
+    code: str = Field(pattern=r"^(?:[A-Za-z0-9]{8}|[A-Za-z0-9]{10})$")
 
 
 class EventOut(BaseModel):
@@ -55,6 +55,7 @@ class EventOut(BaseModel):
     ended_at: int | None
     revision: int
     participants: int
+    my_role: Literal["player", "spectator"] = "player"
 
 
 class Standing(Profile):
@@ -69,6 +70,41 @@ class PhotoOut(BaseModel):
     rear_url: str
     front_url: str
     created_at: int
+    reactions: dict[str, int] = Field(default_factory=dict)
+    my_reaction: str | None = None
+
+
+class ReactionIn(BaseModel):
+    emoji: Literal["❤️", "😂", "🔥"] | None
+
+
+class ClaimIn(BaseModel):
+    prompt: Literal["group", "yellow", "pose"]
+    submission_id: str
+
+
+class VoteIn(BaseModel):
+    approve: bool
+
+
+class ChallengeResult(BaseModel):
+    id: str
+    prompt: str
+    photo: PhotoOut
+    approvals: int
+    required: int
+    status: Literal["approved", "pending", "not_approved"]
+    can_vote: bool
+    my_vote: bool | None
+
+
+class SocialOut(BaseModel):
+    enabled: bool
+    spectator_code: str | None
+    spectators: int
+    prompts: dict[str, str]
+    claims: list[ChallengeResult]
+    scores: dict[str, int]
 
 
 class RecapMoment(BaseModel):

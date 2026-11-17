@@ -12,8 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
-from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User
-from .schemas import CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens
+from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote
+from .schemas import CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut
 from .security import current_user, decode, digest, dummy_hash, hasher, issue_tokens, password_matches, rotate
 
 app = FastAPI(title="BEERREAL", version="0.1.0")
@@ -24,8 +24,10 @@ def profile(user):
     return {"id": user.id, "username": user.username, "avatar_url": storage.photo_url(user.avatar)}
 
 
-def event_out(db, event):
-    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code, "created_at": event.created_at, "ended_at": event.ended_at, "revision": event.revision, "participants": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id))}
+def event_out(db, event, viewer_id=None):
+    membership = db.get(Membership, (event.id, viewer_id)) if viewer_id else None
+    role = membership.role if membership else "player"
+    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": event.ended_at, "revision": event.revision, "participants": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player"))}
 
 
 def member_event(db, event_id, user_id):
@@ -132,7 +134,7 @@ def avatar(photo: UploadFile = File(), user: User = Depends(current_user), db: D
 @app.get("/competitions", response_model=list[EventOut])
 def events(user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     rows = db.scalars(select(Competition).join(Membership).where(Membership.user_id == user.id).order_by(Competition.created_at.desc(), Competition.id))
-    return [event_out(db, row) for row in rows]
+    return [event_out(db, row, user.id) for row in rows]
 
 
 @app.post("/competitions", response_model=EventOut, status_code=201)
@@ -144,7 +146,7 @@ def create_event(body: CreateCompetition, user: User = Depends(current_user), db
             db.flush()
             db.add(Membership(competition_id=event.id, user_id=user.id))
             db.commit()
-            return event_out(db, event)
+            return event_out(db, event, user.id)
         except IntegrityError:
             db.rollback()
     raise HTTPException(503, "Please try creating the competition again")
@@ -152,29 +154,29 @@ def create_event(body: CreateCompetition, user: User = Depends(current_user), db
 
 @app.post("/competitions/join", response_model=EventOut)
 def join(body: JoinCompetition, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    event = db.scalar(select(Competition).where(Competition.code == body.code.upper()))
+    event = db.scalar(select(Competition).where((Competition.code == body.code.upper()) | (Competition.spectator_code == body.code.upper())))
     if not event:
         raise HTTPException(404, "Invitation code not found")
     event = lock_event(db, event.id)
     if db.get(Membership, (event.id, user.id)):
         db.rollback()
-        return event_out(db, event)
+        return event_out(db, event, user.id)
     if event.ended_at:
         raise HTTPException(409, "This competition has finished")
-    db.add(Membership(competition_id=event.id, user_id=user.id))
+    db.add(Membership(competition_id=event.id, user_id=user.id, role="spectator" if event.spectator_code == body.code.upper() else "player"))
     db.commit()
-    return event_out(db, event)
+    return event_out(db, event, user.id)
 
 
-def photo_out(db, row):
-    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at}
+def photo_out(db, row, viewer_id=None):
+    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at, "reactions": dict(db.execute(select(Reaction.emoji, func.count()).where(Reaction.submission_id == row.id).group_by(Reaction.emoji)).all()), "my_reaction": db.scalar(select(Reaction.emoji).where(Reaction.submission_id == row.id, Reaction.user_id == viewer_id)) if viewer_id else None}
 
 
 @app.get("/competitions/{event_id}", response_model=EventDetail)
-def detail(event_id: str, before: str | None = None, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+def detail(event_id: str, before: str | None = None, player: str | None = None, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
     counts = select(Submission.user_id, func.count().label("n")).where(Submission.competition_id == event_id).group_by(Submission.user_id).subquery()
-    rows = db.execute(select(User, func.coalesce(counts.c.n, 0)).join(Membership, Membership.user_id == User.id).outerjoin(counts, counts.c.user_id == User.id).where(Membership.competition_id == event_id).order_by(func.coalesce(counts.c.n, 0).desc(), User.username)).all()
+    rows = db.execute(select(User, func.coalesce(counts.c.n, 0)).join(Membership, Membership.user_id == User.id).outerjoin(counts, counts.c.user_id == User.id).where(Membership.competition_id == event_id, Membership.role == "player").order_by(func.coalesce(counts.c.n, 0).desc(), User.username)).all()
     standings, rank, previous = [], 0, None
     for person, count in rows:
         if count != previous:
@@ -182,6 +184,8 @@ def detail(event_id: str, before: str | None = None, user: User = Depends(curren
         standings.append({**profile(person), "count": count, "points": count, "rank": rank})
         previous = count
     query = select(Submission).where(Submission.competition_id == event_id)
+    if player:
+        query = query.where(Submission.user_id == player)
     if before:
         cursor = db.get(Submission, before)
         if not cursor or cursor.competition_id != event_id:
@@ -196,12 +200,14 @@ def detail(event_id: str, before: str | None = None, user: User = Depends(curren
             first = db.scalar(own.order_by(Submission.created_at, Submission.id).limit(1)) if count else None
             last = db.scalar(own.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(1)) if count > 1 else None
             recap.append({"user": profile(person), "first": photo_out(db, first) if first else None, "last": photo_out(db, last) if last else None})
-    return {"competition": event_out(db, event), "standings": standings, "feed": [photo_out(db, row) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap}
+    return {"competition": event_out(db, event, user.id), "standings": standings, "feed": [photo_out(db, row, user.id) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap}
 
 
 @app.post("/competitions/{event_id}/submissions", response_model=PhotoOut, status_code=201)
 def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     member_event(db, event_id, user.id)
+    if db.get(Membership, (event_id, user.id)).role != "player":
+        raise HTTPException(403, "Spectators cannot submit photos")
     key = str(idempotency_key)
     existing_query = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == user.id, Submission.idempotency_key == key)
     existing = db.scalar(existing_query)
@@ -247,7 +253,21 @@ def end(event_id: str, user: User = Depends(current_user), db: DbSession = Depen
     if not event.ended_at:
         event.ended_at = int(time.time())
     db.commit()
-    return event_out(db, event)
+    return event_out(db, event, user.id)
+
+
+@app.put("/competitions/{event_id}/photos/{photo_id}/reaction", response_model=PhotoOut)
+def react(event_id: str, photo_id: str, body: ReactionIn, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    member_event(db, event_id, user.id)
+    photo = db.get(Submission, photo_id)
+    if not photo or photo.competition_id != event_id:
+        raise HTTPException(404, "Photo not found")
+    lock_event(db, event_id)
+    db.execute(delete(Reaction).where(Reaction.submission_id == photo_id, Reaction.user_id == user.id))
+    if body.emoji:
+        db.add(Reaction(submission_id=photo_id, user_id=user.id, emoji=body.emoji))
+    db.commit()
+    return photo_out(db, photo, user.id)
 
 
 @app.get("/media", include_in_schema=False)
@@ -257,6 +277,91 @@ def media(token: str):
     if not path.is_file():
         raise HTTPException(404, "Photo not found")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=60"})
+
+
+PROMPTS = {"group": "A group selfie (everyone agrees to the photo)", "yellow": "Find something yellow", "pose": "Recreate a pose together"}
+
+
+@app.get("/competitions/{event_id}/social", response_model=SocialOut)
+def social(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    claims, scores = [], {}
+    for claim in db.scalars(select(ChallengeClaim).where(ChallengeClaim.competition_id == event_id).order_by(ChallengeClaim.id)):
+        votes = dict(db.execute(select(ChallengeVote.user_id, ChallengeVote.approve).where(ChallengeVote.claim_id == claim.id)).all())
+        approvals = sum(votes.values())
+        required = len(claim.voters) // 2 + 1
+        status = "approved" if approvals >= required else "not_approved" if event.ended_at else "pending"
+        if status == "approved":
+            scores[claim.user_id] = scores.get(claim.user_id, 0) + 1
+        claims.append({"id": claim.id, "prompt": claim.prompt, "photo": photo_out(db, db.get(Submission, claim.submission_id), user.id), "approvals": approvals, "required": required, "status": status, "can_vote": not event.ended_at and user.id in claim.voters, "my_vote": votes.get(user.id)})
+    return {"enabled": event.challenges_enabled, "spectator_code": event.spectator_code if event.host_id == user.id else None, "spectators": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event_id, Membership.role == "spectator")), "prompts": PROMPTS, "claims": claims, "scores": scores}
+
+
+@app.post("/competitions/{event_id}/social/enable", response_model=SocialOut)
+def enable_challenges(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    if event.host_id != user.id:
+        raise HTTPException(403, "Only the host can enable challenges")
+    event = lock_event(db, event_id)
+    if event.ended_at:
+        raise HTTPException(409, "This night has finished")
+    event.challenges_enabled = True
+    db.commit()
+    return social(event_id, user, db)
+
+
+@app.post("/competitions/{event_id}/spectator-invite", response_model=SocialOut)
+def spectator_invite(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    if event.host_id != user.id:
+        raise HTTPException(403, "Only the host can invite spectators")
+    event = lock_event(db, event_id)
+    if event.ended_at:
+        raise HTTPException(409, "This night has finished")
+    if not event.spectator_code:
+        event.spectator_code = "VW" + secrets.token_hex(4).upper()
+    db.commit()
+    return social(event_id, user, db)
+
+
+@app.post("/competitions/{event_id}/claims", response_model=SocialOut)
+def claim_challenge(event_id: str, body: ClaimIn, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    member_event(db, event_id, user.id)
+    event = lock_event(db, event_id)
+    if event.ended_at or not event.challenges_enabled:
+        raise HTTPException(409, "Challenges are not open")
+    if db.get(Membership, (event_id, user.id)).role != "player":
+        raise HTTPException(403, "Spectators cannot submit challenges")
+    photo = db.get(Submission, body.submission_id)
+    if not photo or photo.competition_id != event_id or photo.user_id != user.id:
+        raise HTTPException(404, "Choose one of your photos from this night")
+    existing = db.scalar(select(ChallengeClaim).where(ChallengeClaim.competition_id == event_id, ChallengeClaim.user_id == user.id, ChallengeClaim.prompt == body.prompt))
+    if existing:
+        db.rollback()
+        return social(event_id, user, db)
+    voters = list(db.scalars(select(Membership.user_id).where(Membership.competition_id == event_id, Membership.role == "player", Membership.user_id != user.id)))
+    if not voters:
+        raise HTTPException(409, "Invite another player before claiming a challenge")
+    db.add(ChallengeClaim(competition_id=event_id, user_id=user.id, submission_id=photo.id, prompt=body.prompt, voters=voters))
+    db.commit()
+    return social(event_id, user, db)
+
+
+@app.put("/competitions/{event_id}/claims/{claim_id}/vote", response_model=SocialOut)
+def vote_challenge(event_id: str, claim_id: str, body: VoteIn, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    member_event(db, event_id, user.id)
+    event = lock_event(db, event_id)
+    claim = db.get(ChallengeClaim, claim_id)
+    if not claim or claim.competition_id != event_id:
+        raise HTTPException(404, "Challenge not found")
+    if event.ended_at:
+        raise HTTPException(409, "Voting is closed")
+    if user.id not in claim.voters:
+        raise HTTPException(403, "Only the other players present at submission can vote")
+    db.execute(delete(ChallengeVote).where(ChallengeVote.claim_id == claim.id, ChallengeVote.user_id == user.id))
+    db.add(ChallengeVote(claim_id=claim.id, user_id=user.id, approve=body.approve))
+    db.commit()
+    return social(event_id, user, db)
 
 
 @app.websocket("/ws/competitions/{event_id}")

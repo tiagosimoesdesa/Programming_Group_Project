@@ -1,6 +1,6 @@
 import time
 import uuid
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, String, UniqueConstraint, JSON, false
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -27,12 +27,15 @@ class Competition(Base):
     created_at: Mapped[int] = mapped_column(default=lambda: int(time.time()))
     ended_at: Mapped[int | None]
     revision: Mapped[int] = mapped_column(default=0)
+    spectator_code: Mapped[str | None] = mapped_column(String(10), unique=True, index=True)
+    challenges_enabled: Mapped[bool] = mapped_column(default=False, server_default=false())
 
 
 class Membership(Base):
     __tablename__ = "memberships"
     competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), default="player", server_default="player")
 
 
 class Submission(Base):
@@ -52,6 +55,31 @@ class RefreshSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     expires_at: Mapped[int]
+
+
+class Reaction(Base):
+    __tablename__ = "reactions"
+    submission_id: Mapped[str] = mapped_column(ForeignKey("submissions.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    emoji: Mapped[str] = mapped_column(String(16))
+
+
+class ChallengeClaim(Base):
+    __tablename__ = "challenge_claims"
+    __table_args__ = (UniqueConstraint("competition_id", "user_id", "prompt"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    submission_id: Mapped[str] = mapped_column(ForeignKey("submissions.id"))
+    prompt: Mapped[str] = mapped_column(String(30))
+    voters: Mapped[list[str]] = mapped_column(JSON)
+
+
+class ChallengeVote(Base):
+    __tablename__ = "challenge_votes"
+    claim_id: Mapped[str] = mapped_column(ForeignKey("challenge_claims.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    approve: Mapped[bool]
 
 
 class LoginAttempt(Base):

@@ -577,7 +577,7 @@ function Root() {
               }
               value={value}
               onChangeText={setValue}
-              maxLength={sheet === "create" ? 60 : 8}
+              maxLength={sheet === "create" ? 60 : 10}
               autoCapitalize={sheet === "create" ? "sentences" : "characters"}
               autoCorrect={false}
             />
@@ -586,7 +586,9 @@ function Root() {
               title={sheet === "create" ? "Start the night" : "Join the night"}
               loading={busy}
               disabled={
-                sheet === "create" ? !value.trim() : value.trim().length !== 8
+                sheet === "create"
+                  ? !value.trim()
+                  : ![8, 10].includes(value.trim().length)
               }
               onPress={() => void saveEvent()}
             />

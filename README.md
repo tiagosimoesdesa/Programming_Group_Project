@@ -10,6 +10,9 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 - Private competitions with shareable invitation codes and multiple active events per user.
 - Rear camera → selfie → preview/retake → submit. Gallery access is available **only for profile pictures**.
 - Private photo feed, live standings, shared ranks, host-only finish, top-three rank groups, and history.
+- Player filters, full-screen photo pairs, and one changeable reaction per person per photo.
+- Optional photo challenges in the Group tab: choose an existing photo, get majority approval from the other players present at submission, and earn separate challenge points. Voting closes with the night.
+- Host-generated spectator codes let invited friends from other groups watch, react, and revisit the night without posting, voting, or appearing in the standings. Join them using the normal invitation-code form. There is no public group directory.
 - Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
 - SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
 

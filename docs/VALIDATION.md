@@ -32,6 +32,8 @@ Automated checks were run on Windows during implementation. Physical-device chec
 
 ## Dependency audit
 
+Social features follow-up: 13 API tests pass, including reaction replacement/removal, filtered feeds, host-only challenge settings and spectator invitations, spectator posting restrictions, nonmember privacy, duplicate challenge claims/votes, majority approval, vote changes, and closure. Alembic upgrades 0002/0003 apply without pending model differences. Strict TypeScript and iOS/Android/web exports pass. Browser smoke testing confirmed a reaction count update, opening/closing the full-screen photo pair, enabling challenges, and a pending challenge submission. Two-phone reaction/voting synchronization and phone layouts remain to be checked. Invitation sharing to other groups is manual through the phone share sheet; there is no public discovery or permanent group linking.
+
 Night recap: finished event details include each member's first and last photo, independently of feed pagination. One-photo and no-photo members are handled explicitly. The API suite covers these cases and nonmember access restrictions. The recap UI includes photo pairs with timestamps, group totals, the existing tied podium groups, and complete standings. Physical-phone layout review is pending.
 
 Photo-upload follow-up: SDK 58's multipart converter explicitly rejects the legacy `{ uri, name, type }` descriptor. Replaced it with an expo-file-system File (including missing/empty-file checks) in the shared camera/avatar upload helper. TypeScript and iOS/Android/web bundles pass; successful upload on a physical phone still needs confirmation.

@@ -209,6 +209,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/competitions/{event_id}/photos/{photo_id}/reaction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** React */
+        put: operations["react_competitions__event_id__photos__photo_id__reaction_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/social": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Social */
+        get: operations["social_competitions__event_id__social_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/social/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable Challenges */
+        post: operations["enable_challenges_competitions__event_id__social_enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/spectator-invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Spectator Invite */
+        post: operations["spectator_invite_competitions__event_id__spectator_invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim Challenge */
+        post: operations["claim_challenge_competitions__event_id__claims_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/claims/{claim_id}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Vote Challenge */
+        put: operations["vote_challenge_competitions__event_id__claims__claim_id__vote_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -224,6 +326,37 @@ export interface components {
             rear: string;
             /** Front */
             front: string;
+        };
+        /** ChallengeResult */
+        ChallengeResult: {
+            /** Id */
+            id: string;
+            /** Prompt */
+            prompt: string;
+            photo: components["schemas"]["PhotoOut"];
+            /** Approvals */
+            approvals: number;
+            /** Required */
+            required: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "pending" | "not_approved";
+            /** Can Vote */
+            can_vote: boolean;
+            /** My Vote */
+            my_vote: boolean | null;
+        };
+        /** ClaimIn */
+        ClaimIn: {
+            /**
+             * Prompt
+             * @enum {string}
+             */
+            prompt: "group" | "yellow" | "pose";
+            /** Submission Id */
+            submission_id: string;
         };
         /** CreateCompetition */
         CreateCompetition: {
@@ -267,6 +400,12 @@ export interface components {
             revision: number;
             /** Participants */
             participants: number;
+            /**
+             * My Role
+             * @default player
+             * @enum {string}
+             */
+            my_role: "player" | "spectator";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -289,6 +428,12 @@ export interface components {
             front_url: string;
             /** Created At */
             created_at: number;
+            /** Reactions */
+            reactions?: {
+                [key: string]: number;
+            };
+            /** My Reaction */
+            my_reaction?: string | null;
         };
         /** Profile */
         Profile: {
@@ -298,6 +443,11 @@ export interface components {
             username: string;
             /** Avatar Url */
             avatar_url: string | null;
+        };
+        /** ReactionIn */
+        ReactionIn: {
+            /** Emoji */
+            emoji: ("❤️" | "😂" | "🔥") | null;
         };
         /** RecapMoment */
         RecapMoment: {
@@ -321,6 +471,25 @@ export interface components {
              * @constant
              */
             legal_age: true;
+        };
+        /** SocialOut */
+        SocialOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Spectator Code */
+            spectator_code: string | null;
+            /** Spectators */
+            spectators: number;
+            /** Prompts */
+            prompts: {
+                [key: string]: string;
+            };
+            /** Claims */
+            claims: components["schemas"]["ChallengeResult"][];
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
         };
         /** Standing */
         Standing: {
@@ -356,6 +525,11 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VoteIn */
+        VoteIn: {
+            /** Approve */
+            approve: boolean;
         };
     };
     responses: never;
@@ -659,6 +833,7 @@ export interface operations {
         parameters: {
             query?: {
                 before?: string | null;
+                player?: string | null;
             };
             header?: never;
             path: {
@@ -743,6 +918,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    react_competitions__event_id__photos__photo_id__reaction_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReactionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    social_competitions__event_id__social_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_challenges_competitions__event_id__social_enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    spectator_invite_competitions__event_id__spectator_invite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_challenge_competitions__event_id__claims_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vote_challenge_competitions__event_id__claims__claim_id__vote_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+                claim_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialOut"];
                 };
             };
             /** @description Validation Error */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { BASE, Detail, liveToken, request } from "./api";
 
-export function useCompetition(id: string) {
+export function useCompetition(id: string, player?: string) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
@@ -12,7 +12,9 @@ export function useCompetition(id: string) {
   const refresh = useCallback(async () => {
     const n = ++sequence.current;
     try {
-      const value = await request<Detail>(`/competitions/${id}`);
+      const value = await request<Detail>(
+        `/competitions/${id}${player ? `?player=${encodeURIComponent(player)}` : ""}`,
+      );
       if (mounted.current && n === sequence.current) {
         setDetail(value);
         setError("");
@@ -21,16 +23,17 @@ export function useCompetition(id: string) {
       if (mounted.current && n === sequence.current)
         setError((e as Error).message);
     }
-  }, [id]);
+  }, [id, player]);
   async function loadMore() {
     if (!detail?.next_cursor || loading) return;
     setLoading(true);
     const revision = detail.competition.revision;
+    const generation = sequence.current;
     try {
       const page = await request<Detail>(
-        `/competitions/${id}?before=${detail.next_cursor}`,
+        `/competitions/${id}?before=${detail.next_cursor}${player ? `&player=${encodeURIComponent(player)}` : ""}`,
       );
-      if (mounted.current)
+      if (mounted.current && sequence.current === generation)
         setDetail((current) =>
           current && current.competition.revision === revision
             ? {

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { post, Profile } from "./api";
+import { post, Profile, Photo } from "./api";
 import {
   Avatar,
   Button,
@@ -27,6 +28,7 @@ import { useCompetition } from "./useCompetition";
 import CameraScreen, { Capture } from "./CameraScreen";
 import { imagePart, request } from "./api";
 import NightRecap from "./NightRecap";
+import SocialPanel from "./SocialPanel";
 
 export default function CompetitionScreen({
   id,
@@ -41,9 +43,14 @@ export default function CompetitionScreen({
   pending: Capture | null;
   onPending: (v: Capture | null) => void;
 }) {
+  const [player, setPlayer] = useState<string | undefined>();
+  const [expanded, setExpanded] = useState<Photo | null>(null);
+  const [reacting, setReacting] = useState<string | null>(null);
   const { detail, error, connected, refresh, loadMore, loading } =
-    useCompetition(id);
-  const [selectedTab, setTab] = useState<"feed" | "ranks" | "recap" | null>(null);
+    useCompetition(id, player);
+  const [selectedTab, setTab] = useState<
+    "feed" | "ranks" | "recap" | "social" | null
+  >(null);
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -82,7 +89,7 @@ export default function CompetitionScreen({
   function finish() {
     showAlert(
       "Call it a night?",
-      "This closes submissions for everyone. Your photos and final standings stay available.",
+      "This closes photo submissions and challenge voting. Unapproved challenges receive no points. Photos and final standings stay available.",
       [
         { text: "Keep it open", style: "cancel" },
         {
@@ -101,6 +108,24 @@ export default function CompetitionScreen({
         },
       ],
     );
+  }
+  async function react(photo: Photo, emoji: string) {
+    if (reacting) return;
+    setReacting(photo.id);
+    setActionError("");
+    try {
+      await request(`/competitions/${id}/photos/${photo.id}/reaction`, {
+        method: "PUT",
+        body: JSON.stringify({
+          emoji: photo.my_reaction === emoji ? null : emoji,
+        }),
+      });
+      await refresh();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setReacting(null);
+    }
   }
   if (camera && detail)
     return (
@@ -160,6 +185,7 @@ export default function CompetitionScreen({
           </Text>
           <Pressable
             accessibilityLabel="Share invitation code"
+            disabled={event.my_role === "spectator" || ended}
             style={s.iconButton}
             onPress={() => {
               Share.share({
@@ -187,7 +213,9 @@ export default function CompetitionScreen({
           <Text style={s.body}>
             {ended
               ? "The night ends. The stories don’t."
-              : `Invite your people · ${event.code}`}
+              : event.my_role === "spectator"
+                ? "Watching with friends"
+                : `Invite your people · ${event.code}`}
           </Text>
         </View>
         <ErrorText message={actionError || error} />
@@ -251,7 +279,10 @@ export default function CompetitionScreen({
           </View>
         )}
         <View style={s.tabs}>
-          {(ended ? ["recap", "feed", "ranks"] as const : ["feed", "ranks"] as const).map((t) => (
+          {(ended
+            ? (["recap", "feed", "ranks", "social"] as const)
+            : (["feed", "ranks", "social"] as const)
+          ).map((t) => (
             <Pressable
               key={t}
               accessibilityRole="tab"
@@ -265,12 +296,51 @@ export default function CompetitionScreen({
                   { color: tab === t ? colors.yellow : colors.muted },
                 ]}
               >
-                {t === "recap" ? "Recap" : t === "feed" ? "Photos" : "Standings"}
+                {t === "recap"
+                  ? "Recap"
+                  : t === "feed"
+                    ? "Photos"
+                    : t === "social"
+                      ? "Group"
+                      : "Ranks"}
               </Text>
             </Pressable>
           ))}
         </View>
-        {tab === "recap" ? <NightRecap detail={detail} /> : tab === "ranks" ? (
+        {tab === "feed" && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8 }}
+          >
+            {[{ id: undefined, username: "Everyone" }, ...detail.standings].map(
+              (person) => (
+                <Pressable
+                  key={person.id ?? "all"}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: player === person.id }}
+                  onPress={() => setPlayer(person.id)}
+                  style={[
+                    s.pill,
+                    {
+                      padding: 12,
+                      borderWidth: 1,
+                      borderColor:
+                        player === person.id ? colors.yellow : colors.line,
+                    },
+                  ]}
+                >
+                  <Text style={s.label}>{person.username}</Text>
+                </Pressable>
+              ),
+            )}
+          </ScrollView>
+        )}
+        {tab === "social" ? (
+          <SocialPanel detail={detail} me={me.id} />
+        ) : tab === "recap" ? (
+          <NightRecap detail={detail} />
+        ) : tab === "ranks" ? (
           <View style={{ gap: 10 }}>
             {detail.standings.map((person) => (
               <Entrance key={person.id} trigger={person.rank}>
@@ -335,7 +405,12 @@ export default function CompetitionScreen({
                     size={20}
                   />
                 </View>
-                <View style={{ aspectRatio: 3 / 4, marginTop: -16 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open photo from ${photo.user.username}`}
+                  onPress={() => setExpanded(photo)}
+                  style={{ aspectRatio: 3 / 4, marginTop: -16 }}
+                >
                   <Image
                     accessibilityLabel={`Drink photo from ${photo.user.username}`}
                     source={{ uri: photo.rear_url }}
@@ -370,6 +445,36 @@ export default function CompetitionScreen({
                       +1 MOMENT
                     </Text>
                   </View>
+                </Pressable>
+                <View style={[s.row, { padding: 14 }]}>
+                  {["❤️", "😂", "🔥"].map((emoji) => (
+                    <Pressable
+                      key={emoji}
+                      accessibilityRole="button"
+                      accessibilityLabel={`React ${emoji}`}
+                      accessibilityState={{
+                        selected: photo.my_reaction === emoji,
+                        disabled: !!reacting,
+                      }}
+                      disabled={!!reacting}
+                      onPress={() => void react(photo, emoji)}
+                      style={[
+                        s.pill,
+                        {
+                          padding: 10,
+                          borderWidth: 1,
+                          borderColor:
+                            photo.my_reaction === emoji
+                              ? colors.yellow
+                              : colors.line,
+                        },
+                      ]}
+                    >
+                      <Text style={s.label}>
+                        {emoji} {photo.reactions?.[emoji] ?? 0}
+                      </Text>
+                    </Pressable>
+                  ))}
                 </View>
               </View>
             ))}
@@ -406,7 +511,40 @@ export default function CompetitionScreen({
           />
         )}
       </ScrollView>
-      {!ended && (
+      <Modal
+        visible={!!expanded}
+        onRequestClose={() => setExpanded(null)}
+        animationType="fade"
+      >
+        <View style={[s.root, { padding: 24, paddingTop: 64, gap: 18 }]}>
+          <Button
+            title="Close photo"
+            secondary
+            onPress={() => setExpanded(null)}
+          />
+          {expanded && (
+            <>
+              <Text style={s.h3}>{expanded.user.username}</Text>
+              <Text style={s.small}>
+                {new Date(expanded.created_at * 1000).toLocaleString()}
+              </Text>
+              <Image
+                source={{ uri: expanded.rear_url }}
+                resizeMode="contain"
+                style={{ flex: 1, width: "100%" }}
+                accessibilityLabel="Full-size drink photo"
+              />
+              <Image
+                source={{ uri: expanded.front_url }}
+                resizeMode="contain"
+                style={{ height: "25%", width: "100%" }}
+                accessibilityLabel="Full-size selfie"
+              />
+            </>
+          )}
+        </View>
+      </Modal>
+      {!ended && event.my_role !== "spectator" && (
         <View
           style={{
             paddingHorizontal: 24,

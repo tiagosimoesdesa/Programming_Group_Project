@@ -8,6 +8,8 @@ __pycache__/
 .env.*
 !.env.example
 *.db
+*.db-shm
+*.db-wal
 backend/uploads/
 .tools/
 *.pyc

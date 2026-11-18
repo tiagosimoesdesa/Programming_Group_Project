@@ -3,10 +3,12 @@ services:
     name: beerreal-api
     runtime: python
     plan: free
+    region: frankfurt
     rootDir: backend
     buildCommand: pip install uv && uv sync --frozen --no-dev
     startCommand: uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
     healthCheckPath: /health
+    autoDeployTrigger: checksPass
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.10
@@ -18,9 +20,31 @@ services:
         sync: false
       - key: PUBLIC_URL
         sync: false
+      - key: CORS_ORIGINS
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: SUPABASE_BUCKET
         value: beerreal
+
+  - type: web
+    name: beerreal-web
+    runtime: static
+    rootDir: mobile
+    buildCommand: npm ci && npx expo export --platform web
+    staticPublishPath: dist
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: EXPO_PUBLIC_WEB_API_URL
+        sync: false
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: same-origin

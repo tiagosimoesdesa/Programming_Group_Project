@@ -91,6 +91,8 @@ npx expo install --check
 
 See [device acceptance tests](docs/DEVICE_TESTS.md) and [deployment instructions](docs/DEPLOYMENT.md). Cloud services are not provisioned automatically.
 
+For the public course deployment, the included Render Blueprint creates both the Python API and the Expo web site. Supabase provides production PostgreSQL and private photo storage. Follow the deployment guide, then add the final public application URL and all group members' names and student numbers to this README before submission.
+
 The [validation record](docs/VALIDATION.md) lists completed checks, remaining device/hosting work, and the SDK 54 build-tool dependency advisories. Review those before public distribution.
 
 ## Architecture and first-release limits

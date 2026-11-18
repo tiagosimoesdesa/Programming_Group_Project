@@ -29,6 +29,9 @@ import CameraScreen, { Capture } from "./CameraScreen";
 import { imagePart, request } from "./api";
 import NightRecap from "./NightRecap";
 import SocialPanel from "./SocialPanel";
+import PartyPanel from "./PartyPanel";
+
+type CompetitionTab = "feed" | "ranks" | "recap" | "social" | "party";
 
 export default function CompetitionScreen({
   id,
@@ -48,23 +51,27 @@ export default function CompetitionScreen({
   const [reacting, setReacting] = useState<string | null>(null);
   const { detail, error, connected, refresh, loadMore, loading } =
     useCompetition(id, player);
-  const [selectedTab, setTab] = useState<
-    "feed" | "ranks" | "recap" | "social" | null
-  >(null);
+  const [selectedTab, setTab] = useState<CompetitionTab | null>(null);
   const [camera, setCamera] = useState(false);
+  const [partyCapture, setPartyCapture] = useState<{
+    roundId: string;
+    prompt: string;
+  } | null>(null);
+  const [partyPending, setPartyPending] = useState<Capture | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const back = BackHandler.addEventListener("hardwareBackPress", () => {
       if (!busy) {
-        if (camera) setCamera(false);
+        if (partyCapture) setPartyCapture(null);
+        else if (camera) setCamera(false);
         else onBack();
       }
       return true;
     });
     return () => back.remove();
-  }, [camera, busy, onBack]);
+  }, [camera, partyCapture, busy, onBack]);
   async function submit(capture: Capture) {
     setBusy(true);
     setActionError("");
@@ -79,6 +86,31 @@ export default function CompetitionScreen({
       });
       onPending(null);
       setCamera(false);
+      await refresh();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function submitParty(capture: Capture) {
+    if (!partyCapture) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      const form = new FormData();
+      form.append("rear", await imagePart(capture.rear, "rear.jpg"));
+      form.append("front", await imagePart(capture.front, "front.jpg"));
+      await request(
+        `/competitions/${id}/party/rounds/${partyCapture.roundId}/attempts`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": capture.key },
+          body: form,
+        },
+      );
+      setPartyPending(null);
+      setPartyCapture(null);
       await refresh();
     } catch (e) {
       setActionError((e as Error).message);
@@ -127,6 +159,21 @@ export default function CompetitionScreen({
       setReacting(null);
     }
   }
+  if (partyCapture && detail)
+    return (
+      <CameraScreen
+        name={partyCapture.prompt}
+        pending={partyPending}
+        onPending={(value) => {
+          setPartyPending(value);
+          setActionError("");
+        }}
+        onSubmit={(value) => void submitParty(value)}
+        onClose={() => setPartyCapture(null)}
+        busy={busy}
+        error={actionError}
+      />
+    );
   if (camera && detail)
     return (
       <CameraScreen
@@ -157,6 +204,11 @@ export default function CompetitionScreen({
   const event = detail.competition;
   const ended = !!event.ended_at;
   const tab = selectedTab ?? (ended ? "recap" : "feed");
+  const tabs: CompetitionTab[] = ended
+    ? ["recap", "feed", "ranks"]
+    : ["feed", "ranks"];
+  if (event.mode === "party") tabs.push("party");
+  tabs.push("social");
   return (
     <View style={s.root}>
       <ScrollView
@@ -208,6 +260,16 @@ export default function CompetitionScreen({
               </Text>
             </View>
             <Text style={s.small}>{event.participants} friends</Text>
+            <Text
+              style={[
+                s.eyebrow,
+                {
+                  color: event.mode === "party" ? colors.yellow : colors.muted,
+                },
+              ]}
+            >
+              {event.mode === "party" ? "PARTY MODE" : "CLASSIC MODE"}
+            </Text>
           </View>
           <Text style={s.h1}>{event.name}</Text>
           <Text style={s.body}>
@@ -279,10 +341,7 @@ export default function CompetitionScreen({
           </View>
         )}
         <View style={s.tabs}>
-          {(ended
-            ? (["recap", "feed", "ranks", "social"] as const)
-            : (["feed", "ranks", "social"] as const)
-          ).map((t) => (
+          {tabs.map((t) => (
             <Pressable
               key={t}
               accessibilityRole="tab"
@@ -302,7 +361,9 @@ export default function CompetitionScreen({
                     ? "Photos"
                     : t === "social"
                       ? "Group"
-                      : "Ranks"}
+                      : t === "party"
+                        ? "Party"
+                        : "Ranks"}
               </Text>
             </Pressable>
           ))}
@@ -338,6 +399,15 @@ export default function CompetitionScreen({
         )}
         {tab === "social" ? (
           <SocialPanel detail={detail} me={me.id} />
+        ) : tab === "party" ? (
+          <PartyPanel
+            detail={detail}
+            me={me.id}
+            onCapture={(roundId, prompt) => {
+              setActionError("");
+              setPartyCapture({ roundId, prompt });
+            }}
+          />
         ) : tab === "recap" ? (
           <NightRecap detail={detail} />
         ) : tab === "ranks" ? (
@@ -369,6 +439,9 @@ export default function CompetitionScreen({
                     </Text>
                     <Text style={s.small}>
                       {person.count} {person.count === 1 ? "beer" : "beers"}
+                      {event.mode === "party" && person.challenge_points
+                        ? ` · ${person.challenge_points} challenge pts`
+                        : ""}
                     </Text>
                   </View>
                   <Text style={[s.h3, { color: colors.yellow }]}>
@@ -390,6 +463,11 @@ export default function CompetitionScreen({
                   <Avatar user={photo.user} size={36} />
                   <View style={{ flex: 1 }}>
                     <Text style={s.label}>{photo.user.username}</Text>
+                    {photo.kind === "challenge" && (
+                      <Text style={[s.eyebrow, { color: colors.yellow }]}>
+                        PARTY CHALLENGE · {photo.challenge_prompt}
+                      </Text>
+                    )}
                     <Text style={s.small}>
                       {new Date(photo.created_at * 1000).toLocaleString([], {
                         month: "short",
@@ -442,7 +520,9 @@ export default function CompetitionScreen({
                     }}
                   >
                     <Text style={{ color: colors.bg, fontWeight: "800" }}>
-                      +1 MOMENT
+                      {photo.kind === "challenge"
+                        ? "+2 CHALLENGE"
+                        : "+1 MOMENT"}
                     </Text>
                   </View>
                 </Pressable>

@@ -66,6 +66,9 @@ function Root() {
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<"create" | "join" | null>(null);
   const [value, setValue] = useState("");
+  const [selectedMode, setSelectedMode] = useState<"classic" | "party" | null>(
+    null,
+  );
   const [sheetError, setSheetError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,7 +143,7 @@ function Root() {
       const result = await post<Competition>(
         sheet === "create" ? "/competitions" : "/competitions/join",
         sheet === "create"
-          ? { name: value.trim() }
+          ? { name: value.trim(), mode: selectedMode }
           : { code: value.trim().toUpperCase() },
       );
       setSheet(null);
@@ -213,6 +216,7 @@ function Root() {
   function openSheet(mode: "create" | "join") {
     setSheet(mode);
     setValue("");
+    setSelectedMode(null);
     setSheetError("");
   }
   function eventCard(event: Competition) {
@@ -237,6 +241,14 @@ function Root() {
             </View>
           </View>
           <Text style={s.h3}>{event.name}</Text>
+          <Text
+            style={[
+              s.eyebrow,
+              { color: event.mode === "party" ? colors.yellow : colors.muted },
+            ]}
+          >
+            {event.mode === "party" ? "PARTY MODE" : "CLASSIC MODE"}
+          </Text>
           <View style={s.between}>
             <Text style={s.small}>
               {event.participants} friends ·{" "}
@@ -535,13 +547,18 @@ function Root() {
             justifyContent: "flex-end",
           }}
         >
-          <View
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
             style={{
-              padding: 28,
-              paddingBottom: 44,
+              maxHeight: "92%",
               borderTopLeftRadius: 32,
               borderTopRightRadius: 32,
               backgroundColor: colors.bg,
+            }}
+            contentContainerStyle={{
+              flexGrow: 0,
+              padding: 28,
+              paddingBottom: 44,
               gap: 20,
             }}
           >
@@ -581,18 +598,66 @@ function Root() {
               autoCapitalize={sheet === "create" ? "sentences" : "characters"}
               autoCorrect={false}
             />
+            {sheet === "create" && (
+              <View style={{ gap: 10 }}>
+                <Text style={s.label}>Which mode do you want to play?</Text>
+                {[
+                  {
+                    id: "classic" as const,
+                    title: "Classic",
+                    body: "One drink photo equals one point. Simple live leaderboard.",
+                  },
+                  {
+                    id: "party" as const,
+                    title: "Party",
+                    body: "Drink photos plus timed challenges. Approved challenges earn 2 bonus points.",
+                  },
+                ].map((mode) => (
+                  <Pressable
+                    key={mode.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: selectedMode === mode.id }}
+                    onPress={() => setSelectedMode(mode.id)}
+                    style={[
+                      s.card,
+                      { padding: 16, gap: 5 },
+                      selectedMode === mode.id && {
+                        borderColor: colors.yellow,
+                      },
+                    ]}
+                  >
+                    <View style={s.between}>
+                      <Text style={s.h3}>{mode.title}</Text>
+                      <Icon
+                        name={
+                          selectedMode === mode.id
+                            ? "radio-button-on"
+                            : "radio-button-off"
+                        }
+                        color={
+                          selectedMode === mode.id
+                            ? colors.yellow
+                            : colors.muted
+                        }
+                      />
+                    </View>
+                    <Text style={s.small}>{mode.body}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             <ErrorText message={sheetError} />
             <Button
               title={sheet === "create" ? "Start the night" : "Join the night"}
               loading={busy}
               disabled={
                 sheet === "create"
-                  ? !value.trim()
+                  ? !value.trim() || !selectedMode
                   : ![8, 10].includes(value.trim().length)
               }
               onPress={() => void saveEvent()}
             />
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </View>

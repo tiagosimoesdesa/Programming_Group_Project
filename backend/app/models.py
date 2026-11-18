@@ -27,6 +27,8 @@ class Competition(Base):
     created_at: Mapped[int] = mapped_column(default=lambda: int(time.time()))
     ended_at: Mapped[int | None]
     revision: Mapped[int] = mapped_column(default=0)
+    mode: Mapped[str] = mapped_column(String(16), default="classic", server_default="classic")
+    party_started_at: Mapped[int | None]
     spectator_code: Mapped[str | None] = mapped_column(String(10), unique=True, index=True)
     challenges_enabled: Mapped[bool] = mapped_column(default=False, server_default=false())
 
@@ -38,6 +40,21 @@ class Membership(Base):
     role: Mapped[str] = mapped_column(String(16), default="player", server_default="player")
 
 
+class PartyRound(Base):
+    __tablename__ = "party_rounds"
+    __table_args__ = (
+        UniqueConstraint("competition_id", "sequence"),
+        UniqueConstraint("competition_id", "prompt_key"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), index=True)
+    sequence: Mapped[int]
+    prompt_key: Mapped[str] = mapped_column(String(40))
+    prompt: Mapped[str] = mapped_column(String(160))
+    starts_at: Mapped[int]
+    ends_at: Mapped[int]
+
+
 class Submission(Base):
     __tablename__ = "submissions"
     __table_args__ = (UniqueConstraint("competition_id", "user_id", "idempotency_key"),)
@@ -45,6 +62,8 @@ class Submission(Base):
     competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     idempotency_key: Mapped[str] = mapped_column(String(36))
+    kind: Mapped[str] = mapped_column(String(16), default="drink", server_default="drink")
+    party_round_id: Mapped[str | None] = mapped_column(ForeignKey("party_rounds.id"), index=True)
     rear: Mapped[str]
     front: Mapped[str]
     created_at: Mapped[int] = mapped_column(default=lambda: int(time.time()))
@@ -71,8 +90,10 @@ class ChallengeClaim(Base):
     competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     submission_id: Mapped[str] = mapped_column(ForeignKey("submissions.id"))
+    round_id: Mapped[str | None] = mapped_column(ForeignKey("party_rounds.id"), index=True)
     prompt: Mapped[str] = mapped_column(String(30))
     voters: Mapped[list[str]] = mapped_column(JSON)
+    approved: Mapped[bool] = mapped_column(default=False, server_default=false())
 
 
 class ChallengeVote(Base):

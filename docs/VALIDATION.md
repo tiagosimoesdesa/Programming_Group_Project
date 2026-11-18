@@ -2,6 +2,17 @@
 
 Automated checks were run on Windows during implementation. Physical-device checks remain in `DEVICE_TESTS.md`.
 
+## Classic and Party modes — 18 November 2026
+
+- Added host-selected Classic and Party modes, with the selection required before the invitation code is generated.
+- Party schedules and scoring are enforced by Python: the host starts with at least two players, 16 unique challenges rotate every 30 minutes, and approved attempts add two points to the combined leaderboard.
+- All 14 backend API tests pass, including Party start rules, dedicated photo-pair attempts, majority approval, combined scoring, feed visibility, and round expiry.
+- Alembic upgrades through revision `0004` apply to a fresh SQLite database and report no pending model operations.
+- OpenAPI and TypeScript client types were regenerated; strict TypeScript and Expo dependency compatibility checks pass.
+- Production bundles export successfully for iOS, Android, and web.
+- Automated browser visual inspection was unavailable because the browser-access host could not be reached. Physical two-phone countdown, camera, voting synchronization, and layout checks remain required.
+- The current audit reports `minimatch` (moderate) and `picomatch` (high) advisories through the Expo/Metro dependency chain, with no compatible fix currently offered. Do not use `npm audit fix --force`; keep Expo updates coordinated with native-device validation.
+
 ## Local verification — 17 November 2026
 
 - Fetched the shared repository before testing; `origin/rodrigo-work` had no commits ahead of local `main`.
@@ -38,4 +49,4 @@ Night recap: finished event details include each member's first and last photo, 
 
 Photo-upload follow-up: SDK 58's multipart converter explicitly rejects the legacy `{ uri, name, type }` descriptor. Replaced it with an expo-file-system File (including missing/empty-file checks) in the shared camera/avatar upload helper. TypeScript and iOS/Android/web bundles pass; successful upload on a physical phone still needs confirmation.
 
-The SDK 58 installation reports three moderate advisories in the Expo/fingerprint/minimatch dependency chain. The earlier SDK 54 high-severity build dependency advisory is no longer reported. Do not use npm audit fix --force: npm proposes an incompatible Expo downgrade. Recheck advisories with future compatible Expo patches.
+The 17 November SDK 58 installation reported three moderate advisories in the Expo/fingerprint/minimatch dependency chain. The newer 18 November audit result is recorded above and supersedes that snapshot. Do not use npm audit fix --force: forced changes can break Expo compatibility. Recheck advisories with future compatible Expo patches.

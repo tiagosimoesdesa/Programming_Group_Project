@@ -399,6 +399,12 @@ export interface components {
              * @default 1
              */
             beer_count: number;
+            /**
+             * Pint Count
+             * @description Pints (exactly 0.5 L) included in beer_count; remaining beers are regular (below 0.5 L).
+             * @default 0
+             */
+            pint_count: number;
         };
         /** Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post */
         Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post: {
@@ -583,6 +589,10 @@ export interface components {
             created_at: number;
             /** Beer Count */
             beer_count: number;
+            /** Pint Count */
+            pint_count: number;
+            /** Beer Points */
+            beer_points: number;
             /** Reactions */
             reactions?: {
                 [key: string]: number;

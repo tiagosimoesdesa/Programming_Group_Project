@@ -1,6 +1,6 @@
 import time
 import uuid
-from sqlalchemy import ForeignKey, String, UniqueConstraint, JSON, false
+from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint, JSON, false
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -57,7 +57,10 @@ class PartyRound(Base):
 
 class Submission(Base):
     __tablename__ = "submissions"
-    __table_args__ = (UniqueConstraint("competition_id", "user_id", "idempotency_key"),)
+    __table_args__ = (
+        UniqueConstraint("competition_id", "user_id", "idempotency_key"),
+        CheckConstraint("pint_count >= 0 AND pint_count <= beer_count", name="valid_pint_count"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -65,6 +68,7 @@ class Submission(Base):
     kind: Mapped[str] = mapped_column(String(16), default="drink", server_default="drink")
     party_round_id: Mapped[str | None] = mapped_column(ForeignKey("party_rounds.id"), index=True)
     beer_count: Mapped[int] = mapped_column(default=1, server_default="1")
+    pint_count: Mapped[int] = mapped_column(default=0, server_default="0")
     rear: Mapped[str]
     front: Mapped[str]
     created_at: Mapped[int] = mapped_column(default=lambda: int(time.time()))

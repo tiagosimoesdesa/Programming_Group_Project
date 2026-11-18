@@ -1098,6 +1098,14 @@
             "minimum": 1.0,
             "title": "Beer Count",
             "default": 1
+          },
+          "pint_count": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Pint Count",
+            "description": "Pints (exactly 0.5 L) included in beer_count; remaining beers are regular (below 0.5 L).",
+            "default": 0
           }
         },
         "type": "object",
@@ -1625,6 +1633,17 @@
             "minimum": 0.0,
             "title": "Beer Count"
           },
+          "pint_count": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Pint Count"
+          },
+          "beer_points": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Beer Points"
+          },
           "reactions": {
             "additionalProperties": {
               "type": "integer"
@@ -1671,7 +1690,9 @@
           "rear_url",
           "front_url",
           "created_at",
-          "beer_count"
+          "beer_count",
+          "pint_count",
+          "beer_points"
         ],
         "title": "PhotoOut"
       },

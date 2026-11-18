@@ -18,6 +18,7 @@ export type Capture = {
   front: string;
   key: string;
   beerCount: number;
+  pintCount: number;
 };
 export default function CameraScreen({
   name,
@@ -76,6 +77,7 @@ export default function CameraScreen({
           front: resized.uri,
           key: Crypto.randomUUID(),
           beerCount: 1,
+          pintCount: 0,
         });
     } catch (e) {
       setLocalError((e as Error).message);
@@ -207,61 +209,65 @@ export default function CameraScreen({
         )}
       </View>
       {pending && countBeers && (
-        <View
-          style={[
-            s.card,
+        <View style={[s.card, { padding: 14, gap: 8 }]}>
+          <Text style={s.label}>Beers in this photo</Text>
+          {[
             {
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: 14,
+              label: "Regular · below 0.5 L",
+              pints: false,
+              count: pending.beerCount - pending.pintCount,
             },
-          ]}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={s.label}>How many beers are visible?</Text>
-            <Text style={s.small}>
-              Count every beer shown in the drink photo.
-            </Text>
-          </View>
-          <View style={[s.row, { gap: 12 }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Remove one beer"
-              accessibilityState={{ disabled: pending.beerCount === 1 }}
-              disabled={pending.beerCount === 1 || busy}
-              onPress={() =>
-                onPending({
-                  ...pending,
-                  beerCount: Math.max(1, pending.beerCount - 1),
-                })
-              }
-              style={s.iconButton}
-            >
-              <Icon name="remove" />
-            </Pressable>
-            <Text
-              accessibilityLiveRegion="polite"
-              style={[s.h2, { minWidth: 28, textAlign: "center" }]}
-            >
-              {pending.beerCount}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add one beer"
-              accessibilityState={{ disabled: pending.beerCount === 10 }}
-              disabled={pending.beerCount === 10 || busy}
-              onPress={() =>
-                onPending({
-                  ...pending,
-                  beerCount: Math.min(10, pending.beerCount + 1),
-                })
-              }
-              style={s.iconButton}
-            >
-              <Icon name="add" />
-            </Pressable>
-          </View>
+            {
+              label: "Pint · exactly 0.5 L",
+              pints: true,
+              count: pending.pintCount,
+            },
+          ].map(({ label, pints, count }) => (
+            <View key={label} style={s.between}>
+              <Text style={[s.small, { flex: 1 }]}>{label}</Text>
+              <View style={[s.row, { gap: 12 }]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove one ${pints ? "pint" : "regular beer"}`}
+                  disabled={busy || count === 0}
+                  onPress={() =>
+                    onPending({
+                      ...pending,
+                      beerCount: pending.beerCount - 1,
+                      pintCount: pending.pintCount - (pints ? 1 : 0),
+                    })
+                  }
+                  style={s.iconButton}
+                >
+                  <Icon name="remove" />
+                </Pressable>
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={[s.h3, { minWidth: 24, textAlign: "center" }]}
+                >
+                  {count}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add one ${pints ? "pint" : "regular beer"}`}
+                  disabled={busy || pending.beerCount >= 10}
+                  onPress={() =>
+                    onPending({
+                      ...pending,
+                      beerCount: pending.beerCount + 1,
+                      pintCount: pending.pintCount + (pints ? 1 : 0),
+                    })
+                  }
+                  style={s.iconButton}
+                >
+                  <Icon name="add" />
+                </Pressable>
+              </View>
+            </View>
+          ))}
+          <Text style={s.small}>
+            {pending.beerCount} beers total · Choose 1–10 beers.
+          </Text>
         </View>
       )}
       <ErrorText message={localError || error} />
@@ -271,6 +277,7 @@ export default function CameraScreen({
             title="Post to the night"
             icon="arrow-up-outline"
             loading={busy}
+            disabled={countBeers && pending.beerCount === 0}
             onPress={() => onSubmit(pending)}
           />
           <Button

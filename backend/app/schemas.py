@@ -75,6 +75,8 @@ class PhotoOut(BaseModel):
     front_url: str
     created_at: int
     beer_count: int = Field(ge=0, le=10)
+    pint_count: int = Field(ge=0, le=10)
+    beer_points: int = Field(ge=0)
     reactions: dict[str, int] = Field(default_factory=dict)
     my_reaction: str | None = None
     kind: Literal["drink", "challenge"] = "drink"

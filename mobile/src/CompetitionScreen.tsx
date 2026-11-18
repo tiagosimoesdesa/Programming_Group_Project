@@ -80,6 +80,7 @@ export default function CompetitionScreen({
       form.append("rear", await imagePart(capture.rear, "rear.jpg"));
       form.append("front", await imagePart(capture.front, "front.jpg"));
       form.append("beer_count", String(capture.beerCount));
+      form.append("pint_count", String(capture.pintCount));
       await request(`/competitions/${id}/submissions`, {
         method: "POST",
         headers: { "Idempotency-Key": capture.key },
@@ -315,7 +316,12 @@ export default function CompetitionScreen({
                         <View key={p.id} style={s.row}>
                           <Avatar user={p} size={34} />
                           <Text style={[s.h3, { flex: 1 }]}>{p.username}</Text>
-                          <Text style={s.label}>{p.points} pts</Text>
+                          <View>
+                            <Text style={s.label}>{p.points} pts</Text>
+                            <Text style={s.small}>
+                              {p.count} {p.count === 1 ? "beer" : "beers"}
+                            </Text>
+                          </View>
                         </View>
                       ))}
                     </View>
@@ -524,7 +530,7 @@ export default function CompetitionScreen({
                     <Text style={{ color: colors.bg, fontWeight: "800" }}>
                       {photo.kind === "challenge"
                         ? "+2 CHALLENGE"
-                        : `+${photo.beer_count} ${photo.beer_count === 1 ? "BEER" : "BEERS"}`}
+                        : `+${photo.beer_count} ${photo.beer_count === 1 ? "BEER" : "BEERS"} · ${photo.beer_points} PTS`}
                     </Text>
                   </View>
                 </Pressable>

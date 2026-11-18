@@ -35,11 +35,11 @@ def image():
     return out.getvalue()
 
 
-def submit(client, auth, event_id, key=None, beer_count=1):
+def submit(client, auth, event_id, key=None, beer_count=1, pint_count=0):
     return client.post(
         f"/competitions/{event_id}/submissions",
         headers={**auth, "Idempotency-Key": key or str(uuid.uuid4())},
-        data={"beer_count": str(beer_count)},
+        data={"beer_count": str(beer_count), "pint_count": str(pint_count)},
         files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")},
     )
 
@@ -114,9 +114,10 @@ def test_invalid_photo_and_missing_pair(client):
     path = f"/competitions/{night['id']}/submissions"
     headers = {**host, "Idempotency-Key": str(uuid.uuid4())}
     assert client.post(path, headers=headers, files={"rear": ("photo.jpg", image(), "image/jpeg")}).status_code == 422
-    response = client.post(path, headers=headers, files={"rear": ("photo.jpg", b"not a photo", "image/jpeg"), "front": ("photo.jpg", image(), "image/jpeg")})
+    response = client.post(path, headers=headers, data={"beer_count": "2", "pint_count": "2"}, files={"rear": ("photo.jpg", b"not a photo", "image/jpeg"), "front": ("photo.jpg", image(), "image/jpeg")})
     assert response.status_code == 422
     assert client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]["count"] == 0
+    assert client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]["points"] == 0
 
 
 def test_beer_count_is_saved_summed_and_validated(client):
@@ -151,11 +152,12 @@ def test_storage_failure_does_not_score(client, monkeypatch):
         original(key, data)
     monkeypatch.setattr(storage, "put", broken)
     key = str(uuid.uuid4())
-    assert submit(client, host, night["id"], key).status_code == 503
+    assert submit(client, host, night["id"], key, pint_count=1).status_code == 503
     assert all(not storage.local_path(path).exists() for path in paths)
     assert client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]["count"] == 0
+    assert client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]["points"] == 0
     monkeypatch.setattr(storage, "put", original)
-    assert submit(client, host, night["id"], key).status_code == 201
+    assert submit(client, host, night["id"], key, pint_count=1).status_code == 201
 
 
 def test_concurrent_duplicate_submissions(client):
@@ -185,7 +187,7 @@ def test_end_during_upload(client, monkeypatch):
             with TestClient(app) as other:
                 assert other.post(f"/competitions/{night['id']}/end", headers=host).status_code == 200
     monkeypatch.setattr(storage, "put", end_after_upload)
-    assert submit(client, host, night["id"]).status_code == 409
+    assert submit(client, host, night["id"], pint_count=1).status_code == 409
     with Session() as db:
         assert not list(db.scalars(select(Submission)))
 
@@ -377,3 +379,74 @@ def test_party_mode_rounds_attempts_and_combined_score(client, monkeypatch):
         files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")},
     )
     assert expired.status_code == 409
+
+
+@pytest.mark.parametrize("quantity,pints,points", [(1, 0, 1), (1, 1, 2), (5, 2, 7), (10, 10, 20)])
+def test_beer_categories(client, quantity, pints, points):
+    host, _ = account(client)
+    night = event(client, host)
+    photo = submit(client, host, night["id"], beer_count=quantity, pint_count=pints)
+    assert photo.status_code == 201
+    assert (photo.json()["beer_count"], photo.json()["pint_count"], photo.json()["beer_points"]) == (quantity, pints, points)
+    row = client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]
+    assert (row["count"], row["points"]) == (quantity, points)
+
+
+def test_points_ranking_and_independent_count(client):
+    host, _ = account(client)
+    night = event(client, host)
+    players = [host]
+    for name in ("pints", "mixed", "empty"):
+        auth, _ = account(client, name)
+        client.post("/competitions/join", headers=auth, json={"code": night["code"]})
+        players.append(auth)
+    submit(client, host, night["id"], beer_count=3)
+    submit(client, host, night["id"], beer_count=2, pint_count=2)
+    submit(client, players[1], night["id"], beer_count=4, pint_count=4)
+    submit(client, players[2], night["id"], beer_count=7)
+    rows = client.get(f"/competitions/{night['id']}", headers=host).json()["standings"]
+    assert [(r["username"], r["count"], r["points"], r["rank"]) for r in rows] == [
+        ("pints", 4, 8, 1), ("alex", 5, 7, 2), ("mixed", 7, 7, 2), ("empty", 0, 0, 3)]
+
+
+@pytest.mark.parametrize("pints", [-1, 3, 11, "invalid", "1.5"])
+def test_invalid_pint_quantity_does_not_score(client, pints):
+    host, _ = account(client)
+    night = event(client, host)
+    assert submit(client, host, night["id"], beer_count=2, pint_count=pints).status_code == 422
+    row = client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]
+    assert row["count"] == row["points"] == 0
+
+
+@pytest.mark.parametrize("duplicate", [True, False])
+def test_concurrent_pints_and_retries(client, duplicate):
+    host, _ = account(client)
+    night = event(client, host)
+    key = str(uuid.uuid4())
+    barrier = Barrier(2)
+    def work(i):
+        with TestClient(app) as other:
+            barrier.wait()
+            return submit(other, host, night["id"], key if duplicate or i == 0 else str(uuid.uuid4()), beer_count=5, pint_count=2)
+    with ThreadPoolExecutor(2) as pool:
+        responses = list(pool.map(work, range(2)))
+    assert all(r.status_code == 201 for r in responses)
+    assert (responses[0].json()["id"] == responses[1].json()["id"]) == duplicate
+    # Changing quantities on retry must never replace an accepted submission.
+    retry = submit(client, host, night["id"], key, beer_count=10, pint_count=10)
+    assert retry.json()["beer_points"] == 7
+    client.post(f"/competitions/{night['id']}/end", headers=host)
+    assert submit(client, host, night["id"], beer_count=1, pint_count=1).status_code == 409
+    assert submit(client, host, night["id"], key).json()["beer_points"] == 7
+    row = client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]
+    factor = 1 if duplicate else 2
+    assert (row["count"], row["points"]) == (5 * factor, 7 * factor)
+
+
+def test_legacy_submission_defaults_to_regular(client):
+    host, _ = account(client)
+    night = event(client, host)
+    response = client.post(f"/competitions/{night['id']}/submissions", headers={**host, "Idempotency-Key": str(uuid.uuid4())}, data={"beer_count": "3"}, files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")})
+    assert response.status_code == 201
+    assert response.json()["pint_count"] == 0
+    assert response.json()["beer_points"] == 3

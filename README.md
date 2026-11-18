@@ -17,7 +17,7 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 - Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
 - SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
 
-Check-ins are trust-based. Players confirm how many beers are visible in each accepted drink photo, and each confirmed beer is one point. The app cannot verify consumption, ownership, or that a drink is new. Only confirmed submissions change the score.
+Check-ins are trust-based. Players confirm how many beers are visible in each accepted drink photo, and select quantities for regular beers (below 0.5 L, 1 point each) and pints (exactly 0.5 L, 2 points each). Each drink always counts as one beer. The app cannot verify consumption, ownership, or that a drink is new. Only confirmed submissions change the score.
 
 ## Requirements
 
@@ -107,3 +107,26 @@ The [validation record](docs/VALIDATION.md) lists completed checks, remaining de
 - Password recovery is deferred. Logout revokes the refresh token; issued access tokens expire within 15 minutes.
 - Age gating is self-attestation. Public launch needs privacy/retention policies, account deletion, moderation/reporting, age controls, and distribution review.
 - Advanced statistics, achievements, sounds, push notifications, automatic invitation links, and result-card exports are deferred.
+
+## Beer points
+
+The backend defines both weights in `backend/app/scoring.py`. `beer_count` remains
+the total number of drinks per photo (1–10); `pint_count` is the number of those
+that are pints, defaulting to zero for older clients. Regular quantity is
+`beer_count - pint_count`. For example, send `beer_count=5` and `pint_count=2`
+for three regular beers plus two pints: five beers and seven beer points.
+Points are derived independently from quantities; changing the central weights
+recalculates historical scores too. Party challenge bonuses remain separate
+and are included in leaderboard points, never beer counts. Equal point totals
+share a dense rank (1, 1, 2).
+
+Apply `uv run alembic upgrade head` before starting the updated backend.
+Migration 0006 preserves historical quantities, treating existing drinks as
+regular beers. Photograph validation, storage, and idempotency still gate the
+single committed submission from which both statistics are derived.
+
+To check locally, run `uv run pytest -q` in `backend` and `npm run typecheck` in
+`mobile`. Start both apps as above, create a Classic competition, capture a photo
+pair, and select three regular beers and two pints. The feed and leaderboard
+should show five beers and seven points. Submit four pints from another account:
+that player should rank above the first with four beers and eight points.

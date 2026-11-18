@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
 from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
-from .schemas import CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
+from .schemas import BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
 from .security import current_user, decode, digest, dummy_hash, hasher, issue_tokens, password_matches, rotate
 
 app = FastAPI(title="BEERREAL", version="0.1.0")
@@ -22,6 +22,7 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_me
 
 PARTY_ROUND_SECONDS = 30 * 60
 PARTY_POINTS = 2
+BATTLE_DURATIONS = {600, 1800, 2700, 3600, 5400, 7200, 10800, 14400, 18000, 21600, 25200, 32400, 36000}
 PARTY_PROMPTS = [
     ("group", "Group selfie with everyone’s consent"),
     ("yellow", "Find something yellow"),
@@ -46,10 +47,24 @@ def profile(user):
     return {"id": user.id, "username": user.username, "avatar_url": storage.photo_url(user.avatar)}
 
 
+def battle_ends_at(event):
+    if event.mode != "battle" or not event.battle_started_at:
+        return None
+    return event.battle_started_at + event.battle_duration_seconds
+
+
+def effective_ended_at(event, now=None):
+    if event.ended_at:
+        return event.ended_at
+    end = battle_ends_at(event)
+    now = int(time.time()) if now is None else now
+    return end if end and now >= end else None
+
+
 def event_out(db, event, viewer_id=None):
     membership = db.get(Membership, (event.id, viewer_id)) if viewer_id else None
     role = membership.role if membership else "player"
-    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": event.ended_at, "revision": event.revision, "participants": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player")), "mode": event.mode, "party_started_at": event.party_started_at}
+    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": effective_ended_at(event), "revision": event.revision, "participants": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player")), "mode": event.mode, "party_started_at": event.party_started_at, "battle_started_at": event.battle_started_at}
 
 
 def member_event(db, event_id, user_id):
@@ -161,8 +176,27 @@ def events(user: User = Depends(current_user), db: DbSession = Depends(get_db)):
 
 @app.post("/competitions", response_model=EventOut, status_code=201)
 def create_event(body: CreateCompetition, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    if body.mode == "battle":
+        if (
+            body.battle_duration_seconds not in BATTLE_DURATIONS
+            or body.battle_points_visible is None
+            or not body.battle_team_a_name
+            or not body.battle_team_b_name
+        ):
+            raise HTTPException(422, "Choose a duration, point visibility, and two team names")
+        if body.battle_team_a_name.casefold() == body.battle_team_b_name.casefold():
+            raise HTTPException(422, "Team names must be different")
     for _ in range(5):
-        event = Competition(name=body.name, mode=body.mode, host_id=user.id, code="".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8)))
+        event = Competition(
+            name=body.name,
+            mode=body.mode,
+            host_id=user.id,
+            code="".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8)),
+            battle_duration_seconds=body.battle_duration_seconds,
+            battle_points_visible=body.battle_points_visible if body.battle_points_visible is not None else True,
+            battle_team_a_name=body.battle_team_a_name,
+            battle_team_b_name=body.battle_team_b_name,
+        )
         try:
             db.add(event)
             db.flush()
@@ -183,8 +217,10 @@ def join(body: JoinCompetition, user: User = Depends(current_user), db: DbSessio
     if db.get(Membership, (event.id, user.id)):
         db.rollback()
         return event_out(db, event, user.id)
-    if event.ended_at:
+    if effective_ended_at(event):
         raise HTTPException(409, "This competition has finished")
+    if event.mode == "battle" and event.battle_started_at:
+        raise HTTPException(409, "This battle has already started")
     db.add(Membership(competition_id=event.id, user_id=user.id, role="spectator" if event.spectator_code == body.code.upper() else "player"))
     db.commit()
     return event_out(db, event, user.id)
@@ -200,20 +236,169 @@ def visible_submissions(event_id):
     return or_(Submission.kind == "drink", Submission.id.in_(approved))
 
 
+def score_rows(db, event_id):
+    counts = select(
+        Submission.user_id,
+        func.sum(Submission.beer_count).label("n"),
+        func.sum(beer_points(Submission.beer_count, Submission.pint_count)).label("points"),
+    ).where(Submission.competition_id == event_id, Submission.kind == "drink").group_by(Submission.user_id).subquery()
+    bonuses = select(ChallengeClaim.user_id, (func.count() * PARTY_POINTS).label("n")).where(
+        ChallengeClaim.competition_id == event_id,
+        ChallengeClaim.round_id.is_not(None),
+        ChallengeClaim.approved.is_(True),
+    ).group_by(ChallengeClaim.user_id).subquery()
+    total = func.coalesce(counts.c.points, 0) + func.coalesce(bonuses.c.n, 0)
+    return db.execute(
+        select(User, Membership.team, func.coalesce(counts.c.n, 0), func.coalesce(bonuses.c.n, 0), total)
+        .join(Membership, Membership.user_id == User.id)
+        .outerjoin(counts, counts.c.user_id == User.id)
+        .outerjoin(bonuses, bonuses.c.user_id == User.id)
+        .where(Membership.competition_id == event_id, Membership.role == "player")
+        .order_by(total.desc(), User.username)
+    ).all()
+
+
+def battle_state(db, event, viewer_id):
+    if event.mode != "battle":
+        raise HTTPException(409, "This competition is not a battle")
+    now = int(time.time())
+    membership = db.get(Membership, (event.id, viewer_id))
+    end = battle_ends_at(event)
+    finished = effective_ended_at(event, now)
+    if event.ended_at and not event.battle_started_at:
+        status = "cancelled"
+    elif finished:
+        status = "complete"
+    elif event.battle_started_at:
+        status = "active"
+    else:
+        status = "waiting"
+    rows = score_rows(db, event.id)
+    teams = []
+    totals = {}
+    for key, name in (("a", event.battle_team_a_name), ("b", event.battle_team_b_name)):
+        team_rows = [row for row in rows if row[1] == key]
+        total = sum(row[4] for row in team_rows)
+        totals[key] = total
+        reveal = status in ("waiting", "complete", "cancelled") or event.battle_points_visible or membership.team == key
+        members, rank, previous = [], 0, None
+        for person, _, count, _challenge_points, points in team_rows:
+            if points != previous:
+                rank += 1
+            members.append({
+                **profile(person),
+                "count": count if reveal else None,
+                "points": points if reveal else None,
+                "rank": rank if reveal else None,
+            })
+            previous = points
+        teams.append({"key": key, "name": name, "score": total if reveal else None, "members": members})
+    winner = None
+    if status == "complete":
+        winner = "tie" if totals["a"] == totals["b"] else ("a" if totals["a"] > totals["b"] else "b")
+    players = [row for row in rows]
+    both_teams = any(row[1] == "a" for row in players) and any(row[1] == "b" for row in players)
+    everyone_chose = bool(players) and all(row[1] in ("a", "b") for row in players)
+    warning_at = end - ((event.battle_duration_seconds + 9) // 10) if end else None
+    return {
+        "status": status,
+        "server_time": now,
+        "duration_seconds": event.battle_duration_seconds,
+        "started_at": event.battle_started_at,
+        "ends_at": end,
+        "warning_at": warning_at,
+        "warning": status == "active" and now >= warning_at,
+        "points_visible": event.battle_points_visible,
+        "my_team": membership.team,
+        "can_start": status == "waiting" and event.host_id == viewer_id and both_teams and everyone_chose,
+        "can_change_team": status == "waiting",
+        "can_leave": status == "waiting",
+        "winner": winner,
+        "teams": teams,
+    }
+
+
+@app.get("/competitions/{event_id}/battle", response_model=BattleOut)
+def get_battle(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    return battle_state(db, event, user.id)
+
+
+@app.put("/competitions/{event_id}/battle/team", response_model=BattleOut)
+def choose_battle_team(event_id: str, body: BattleTeamChoice, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    if event.mode != "battle":
+        raise HTTPException(409, "This competition is not a battle")
+    event = lock_event(db, event_id)
+    if event.battle_started_at or event.ended_at:
+        raise HTTPException(409, "Teams are locked after the battle starts")
+    membership = db.get(Membership, (event_id, user.id))
+    if membership.role != "player":
+        raise HTTPException(403, "Spectators cannot join a battle team")
+    membership.team = body.team
+    db.commit()
+    return battle_state(db, event, user.id)
+
+
+@app.post("/competitions/{event_id}/battle/start", response_model=BattleOut)
+def start_battle(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    if event.mode != "battle":
+        raise HTTPException(409, "This competition is not a battle")
+    if event.host_id != user.id:
+        raise HTTPException(403, "Only the host can start the battle")
+    event = lock_event(db, event_id)
+    if event.ended_at:
+        raise HTTPException(409, "This battle has been cancelled")
+    if event.battle_started_at:
+        db.rollback()
+        return battle_state(db, event, user.id)
+    teams = list(db.scalars(select(Membership.team).where(Membership.competition_id == event_id, Membership.role == "player")))
+    if not teams or any(team not in ("a", "b") for team in teams):
+        raise HTTPException(409, "Every player must choose a team before the battle starts")
+    if "a" not in teams or "b" not in teams:
+        raise HTTPException(409, "Each team needs at least one player")
+    event.battle_started_at = int(time.time())
+    db.commit()
+    return battle_state(db, event, user.id)
+
+
+@app.post("/competitions/{event_id}/battle/leave", status_code=204)
+def leave_battle(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    if event.mode != "battle":
+        raise HTTPException(409, "This competition is not a battle")
+    event = lock_event(db, event_id)
+    if event.battle_started_at:
+        raise HTTPException(409, "You cannot leave after the battle starts")
+    if event.ended_at:
+        raise HTTPException(409, "This battle is already closed")
+    if event.host_id == user.id:
+        event.ended_at = int(time.time())
+    else:
+        db.execute(delete(Membership).where(Membership.competition_id == event_id, Membership.user_id == user.id))
+    db.commit()
+    return None
+
+
 @app.get("/competitions/{event_id}", response_model=EventDetail)
 def detail(event_id: str, before: str | None = None, player: str | None = None, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
-    counts = select(Submission.user_id, func.sum(Submission.beer_count).label("n"), func.sum(beer_points(Submission.beer_count, Submission.pint_count)).label("points")).where(Submission.competition_id == event_id, Submission.kind == "drink").group_by(Submission.user_id).subquery()
-    bonuses = select(ChallengeClaim.user_id, (func.count() * PARTY_POINTS).label("n")).where(ChallengeClaim.competition_id == event_id, ChallengeClaim.round_id.is_not(None), ChallengeClaim.approved.is_(True)).group_by(ChallengeClaim.user_id).subquery()
-    total = func.coalesce(counts.c.points, 0) + func.coalesce(bonuses.c.n, 0)
-    rows = db.execute(select(User, func.coalesce(counts.c.n, 0), func.coalesce(bonuses.c.n, 0), total).join(Membership, Membership.user_id == User.id).outerjoin(counts, counts.c.user_id == User.id).outerjoin(bonuses, bonuses.c.user_id == User.id).where(Membership.competition_id == event_id, Membership.role == "player").order_by(total.desc(), User.username)).all()
+    rows = score_rows(db, event_id)
+    my_membership = db.get(Membership, (event_id, user.id))
+    battle = battle_state(db, event, user.id) if event.mode == "battle" else None
+    private_active_battle = bool(battle and battle["status"] == "active" and not battle["points_visible"])
+    standing_rows = [row for row in rows if not private_active_battle or row[1] == my_membership.team]
     standings, rank, previous = [], 0, None
-    for person, count, challenge_points, points in rows:
+    for person, team, count, challenge_points, points in standing_rows:
         if points != previous:
             rank += 1
-        standings.append({**profile(person), "count": count, "challenge_points": challenge_points, "points": points, "rank": rank})
+        standings.append({**profile(person), "count": count, "challenge_points": challenge_points, "points": points, "rank": rank, "team": team})
         previous = points
     query = select(Submission).where(Submission.competition_id == event_id, visible_submissions(event_id))
+    if private_active_battle:
+        teammates = select(Membership.user_id).where(Membership.competition_id == event_id, Membership.team == my_membership.team)
+        query = query.where(Submission.user_id.in_(teammates))
     if player:
         query = query.where(Submission.user_id == player)
     if before:
@@ -223,23 +408,29 @@ def detail(event_id: str, before: str | None = None, player: str | None = None, 
         query = query.where((Submission.created_at < cursor.created_at) | ((Submission.created_at == cursor.created_at) & (Submission.id < cursor.id)))
     photos = list(db.scalars(query.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(21)))
     recap = []
-    if event.ended_at:
+    if effective_ended_at(event):
         # Independent of feed pagination; deterministic ordering for timestamp ties.
-        for person, count, challenge_points, points in rows:
+        for person, team, count, challenge_points, points in rows:
             own = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == person.id, visible_submissions(event_id))
             first = db.scalar(own.order_by(Submission.created_at, Submission.id).limit(1))
             last = db.scalar(own.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(1))
             if first and last and first.id == last.id:
                 last = None
             recap.append({"user": profile(person), "first": photo_out(db, first) if first else None, "last": photo_out(db, last) if last else None})
-    return {"competition": event_out(db, event, user.id), "standings": standings, "feed": [photo_out(db, row, user.id) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap}
+    return {"competition": event_out(db, event, user.id), "standings": standings, "feed": [photo_out(db, row, user.id) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap, "battle": battle}
 
 
 @app.post("/competitions/{event_id}/submissions", response_model=PhotoOut, status_code=201)
 def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(), beer_count: int = Form(1, ge=1, le=10), pint_count: int = Form(0, ge=0, le=10, description="Pints (exactly 0.5 L) included in beer_count; remaining beers are regular (below 0.5 L)."), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    member_event(db, event_id, user.id)
+    current_event = member_event(db, event_id, user.id)
     if db.get(Membership, (event_id, user.id)).role != "player":
         raise HTTPException(403, "Spectators cannot submit photos")
+    if current_event.mode == "battle":
+        state = battle_state(db, current_event, user.id)
+        if state["status"] != "active":
+            raise HTTPException(409, "Battle photos are accepted only while the battle is active")
+        if not state["my_team"]:
+            raise HTTPException(409, "Choose a team before posting a battle photo")
     key = str(idempotency_key)
     existing_query = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == user.id, Submission.idempotency_key == key)
     existing = db.scalar(existing_query)
@@ -264,8 +455,10 @@ def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(),
         if existing:
             db.rollback()
             return photo_out(db, existing)
-        if event.ended_at:
+        if effective_ended_at(event):
             raise HTTPException(409, "This competition has finished. Your photo was not counted.")
+        if event.mode == "battle" and not event.battle_started_at:
+            raise HTTPException(409, "The battle has not started")
         row = Submission(id=photo_id, competition_id=event_id, user_id=user_id, idempotency_key=key, kind="drink", beer_count=beer_count, pint_count=pint_count, rear=paths[0], front=paths[1])
         db.add(row)
         db.commit()
@@ -283,6 +476,8 @@ def end(event_id: str, user: User = Depends(current_user), db: DbSession = Depen
     event = member_event(db, event_id, user.id)
     if event.host_id != user.id:
         raise HTTPException(403, "Only the host can finish this competition")
+    if event.mode == "battle":
+        raise HTTPException(409, "Battles finish automatically when their timer reaches zero")
     event = lock_event(db, event_id)
     if not event.ended_at:
         event.ended_at = int(time.time())
@@ -292,10 +487,15 @@ def end(event_id: str, user: User = Depends(current_user), db: DbSession = Depen
 
 @app.put("/competitions/{event_id}/photos/{photo_id}/reaction", response_model=PhotoOut)
 def react(event_id: str, photo_id: str, body: ReactionIn, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    member_event(db, event_id, user.id)
+    event = member_event(db, event_id, user.id)
     photo = db.get(Submission, photo_id)
     if not photo or photo.competition_id != event_id or (photo.kind == "challenge" and not db.scalar(select(ChallengeClaim.approved).where(ChallengeClaim.submission_id == photo.id))):
         raise HTTPException(404, "Photo not found")
+    if event.mode == "battle" and not event.battle_points_visible and not effective_ended_at(event):
+        viewer = db.get(Membership, (event_id, user.id))
+        owner = db.get(Membership, (event_id, photo.user_id))
+        if event.battle_started_at and viewer.team != owner.team:
+            raise HTTPException(404, "Photo not found")
     lock_event(db, event_id)
     db.execute(delete(Reaction).where(Reaction.submission_id == photo_id, Reaction.user_id == user.id))
     if body.emoji:
@@ -467,6 +667,8 @@ def vote_party_attempt(event_id: str, attempt_id: str, body: VoteIn, user: User 
 @app.get("/competitions/{event_id}/social", response_model=SocialOut)
 def social(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
+    if event.mode == "battle":
+        raise HTTPException(409, "Battle privacy and scoring are managed in Battle Mode")
     claims, scores = [], {}
     for claim in db.scalars(select(ChallengeClaim).where(ChallengeClaim.competition_id == event_id).order_by(ChallengeClaim.id)):
         votes = dict(db.execute(select(ChallengeVote.user_id, ChallengeVote.approve).where(ChallengeVote.claim_id == claim.id)).all())
@@ -482,6 +684,8 @@ def social(event_id: str, user: User = Depends(current_user), db: DbSession = De
 @app.post("/competitions/{event_id}/social/enable", response_model=SocialOut)
 def enable_challenges(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
+    if event.mode == "battle":
+        raise HTTPException(409, "Social challenges are unavailable in Battle Mode")
     if event.host_id != user.id:
         raise HTTPException(403, "Only the host can enable challenges")
     event = lock_event(db, event_id)
@@ -495,6 +699,8 @@ def enable_challenges(event_id: str, user: User = Depends(current_user), db: DbS
 @app.post("/competitions/{event_id}/spectator-invite", response_model=SocialOut)
 def spectator_invite(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
+    if event.mode == "battle":
+        raise HTTPException(409, "Spectators are unavailable in Battle Mode")
     if event.host_id != user.id:
         raise HTTPException(403, "Only the host can invite spectators")
     event = lock_event(db, event_id)
@@ -508,7 +714,9 @@ def spectator_invite(event_id: str, user: User = Depends(current_user), db: DbSe
 
 @app.post("/competitions/{event_id}/claims", response_model=SocialOut)
 def claim_challenge(event_id: str, body: ClaimIn, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    member_event(db, event_id, user.id)
+    current_event = member_event(db, event_id, user.id)
+    if current_event.mode == "battle":
+        raise HTTPException(409, "Social challenges are unavailable in Battle Mode")
     event = lock_event(db, event_id)
     if event.ended_at or not event.challenges_enabled:
         raise HTTPException(409, "Challenges are not open")
@@ -531,7 +739,9 @@ def claim_challenge(event_id: str, body: ClaimIn, user: User = Depends(current_u
 
 @app.put("/competitions/{event_id}/claims/{claim_id}/vote", response_model=SocialOut)
 def vote_challenge(event_id: str, claim_id: str, body: VoteIn, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    member_event(db, event_id, user.id)
+    current_event = member_event(db, event_id, user.id)
+    if current_event.mode == "battle":
+        raise HTTPException(409, "Social challenges are unavailable in Battle Mode")
     event = lock_event(db, event_id)
     claim = db.get(ChallengeClaim, claim_id)
     if not claim or claim.competition_id != event_id:

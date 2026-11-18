@@ -343,6 +343,185 @@
         ]
       }
     },
+    "/competitions/{event_id}/battle": {
+      "get": {
+        "summary": "Get Battle",
+        "operationId": "get_battle_competitions__event_id__battle_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BattleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/battle/team": {
+      "put": {
+        "summary": "Choose Battle Team",
+        "operationId": "choose_battle_team_competitions__event_id__battle_team_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BattleTeamChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BattleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/battle/start": {
+      "post": {
+        "summary": "Start Battle",
+        "operationId": "start_battle_competitions__event_id__battle_start_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BattleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/battle/leave": {
+      "post": {
+        "summary": "Leave Battle",
+        "operationId": "leave_battle_competitions__event_id__battle_leave_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/competitions/{event_id}": {
       "get": {
         "summary": "Detail",
@@ -1066,6 +1245,259 @@
   },
   "components": {
     "schemas": {
+      "BattleMember": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "avatar_url"
+        ],
+        "title": "BattleMember"
+      },
+      "BattleOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "active",
+              "complete",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "server_time": {
+            "type": "integer",
+            "title": "Server Time"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "warning_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning At"
+          },
+          "warning": {
+            "type": "boolean",
+            "title": "Warning"
+          },
+          "points_visible": {
+            "type": "boolean",
+            "title": "Points Visible"
+          },
+          "my_team": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Team"
+          },
+          "can_start": {
+            "type": "boolean",
+            "title": "Can Start"
+          },
+          "can_change_team": {
+            "type": "boolean",
+            "title": "Can Change Team"
+          },
+          "can_leave": {
+            "type": "boolean",
+            "title": "Can Leave"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "a",
+                  "b",
+                  "tie"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/BattleTeam"
+            },
+            "type": "array",
+            "title": "Teams"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "server_time",
+          "duration_seconds",
+          "started_at",
+          "ends_at",
+          "warning_at",
+          "warning",
+          "points_visible",
+          "my_team",
+          "can_start",
+          "can_change_team",
+          "can_leave",
+          "winner",
+          "teams"
+        ],
+        "title": "BattleOut"
+      },
+      "BattleTeam": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b"
+            ],
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/BattleMember"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "score",
+          "members"
+        ],
+        "title": "BattleTeam"
+      },
+      "BattleTeamChoice": {
+        "properties": {
+          "team": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b"
+            ],
+            "title": "Team"
+          }
+        },
+        "type": "object",
+        "required": [
+          "team"
+        ],
+        "title": "BattleTeamChoice"
+      },
       "Body_avatar_me_avatar_put": {
         "properties": {
           "photo": {
@@ -1229,9 +1661,73 @@
             "type": "string",
             "enum": [
               "classic",
-              "party"
+              "party",
+              "battle"
             ],
             "title": "Mode"
+          },
+          "battle_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  600,
+                  1800,
+                  2700,
+                  3600,
+                  5400,
+                  7200,
+                  10800,
+                  14400,
+                  18000,
+                  21600,
+                  25200,
+                  32400,
+                  36000
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Duration Seconds"
+          },
+          "battle_points_visible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Points Visible"
+          },
+          "battle_team_a_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Team A Name"
+          },
+          "battle_team_b_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Team B Name"
           }
         },
         "type": "object",
@@ -1298,6 +1794,16 @@
             },
             "type": "array",
             "title": "Recap"
+          },
+          "battle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BattleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -1363,7 +1869,8 @@
             "type": "string",
             "enum": [
               "classic",
-              "party"
+              "party",
+              "battle"
             ],
             "title": "Mode"
           },
@@ -1377,6 +1884,17 @@
               }
             ],
             "title": "Party Started At"
+          },
+          "battle_started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Started At"
           }
         },
         "type": "object",
@@ -1918,6 +2436,21 @@
           "rank": {
             "type": "integer",
             "title": "Rank"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
           }
         },
         "type": "object",

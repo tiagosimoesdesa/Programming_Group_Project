@@ -30,8 +30,10 @@ import { imagePart, request } from "./api";
 import NightRecap from "./NightRecap";
 import SocialPanel from "./SocialPanel";
 import PartyPanel from "./PartyPanel";
+import BattlePanel from "./BattlePanel";
 
-type CompetitionTab = "feed" | "ranks" | "recap" | "social" | "party";
+type CompetitionTab =
+  "feed" | "ranks" | "recap" | "social" | "party" | "battle";
 
 export default function CompetitionScreen({
   id,
@@ -61,6 +63,7 @@ export default function CompetitionScreen({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [battleClock, setBattleClock] = useState(0);
   useEffect(() => {
     const back = BackHandler.addEventListener("hardwareBackPress", () => {
       if (!busy) {
@@ -72,6 +75,29 @@ export default function CompetitionScreen({
     });
     return () => back.remove();
   }, [camera, partyCapture, busy, onBack]);
+  useEffect(() => {
+    const battle = detail?.battle;
+    if (battle?.status !== "active" || !battle.ends_at) return;
+    const endsAt = battle.ends_at;
+    const offset = battle.server_time - Math.floor(Date.now() / 1000);
+    let refreshed = false;
+    const tick = () => {
+      const current = Math.floor(Date.now() / 1000) + offset;
+      setBattleClock(current);
+      if (current >= endsAt && !refreshed) {
+        refreshed = true;
+        void refresh();
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [
+    detail?.battle?.status,
+    detail?.battle?.server_time,
+    detail?.battle?.ends_at,
+    refresh,
+  ]);
   async function submit(capture: Capture) {
     setBusy(true);
     setActionError("");
@@ -206,12 +232,31 @@ export default function CompetitionScreen({
     );
   const event = detail.competition;
   const ended = !!event.ended_at;
-  const tab = selectedTab ?? (ended ? "recap" : "feed");
-  const tabs: CompetitionTab[] = ended
-    ? ["recap", "feed", "ranks"]
-    : ["feed", "ranks"];
-  if (event.mode === "party") tabs.push("party");
-  tabs.push("social");
+  const isBattle = event.mode === "battle" && !!detail.battle;
+  const tab = selectedTab ?? (isBattle ? "battle" : ended ? "recap" : "feed");
+  const tabs: CompetitionTab[] = isBattle
+    ? detail.battle?.status === "waiting"
+      ? ["battle"]
+      : ["battle", "feed", "ranks"]
+    : ended
+      ? ["recap", "feed", "ranks"]
+      : ["feed", "ranks"];
+  if (!isBattle) {
+    if (event.mode === "party") tabs.push("party");
+    tabs.push("social");
+  }
+  const canCapture =
+    !ended &&
+    event.my_role !== "spectator" &&
+    (!isBattle || detail.battle?.status === "active");
+  const battleRemaining = Math.max(
+    0,
+    (detail.battle?.ends_at ?? battleClock) - battleClock,
+  );
+  const battleWarning =
+    detail.battle?.status === "active" &&
+    detail.battle.warning_at !== null &&
+    battleClock >= detail.battle.warning_at;
   return (
     <View style={s.root}>
       <ScrollView
@@ -240,7 +285,11 @@ export default function CompetitionScreen({
           </Text>
           <Pressable
             accessibilityLabel="Share invitation code"
-            disabled={event.my_role === "spectator" || ended}
+            disabled={
+              event.my_role === "spectator" ||
+              ended ||
+              (isBattle && !!event.battle_started_at)
+            }
             style={s.iconButton}
             onPress={() => {
               Share.share({
@@ -271,7 +320,11 @@ export default function CompetitionScreen({
                 },
               ]}
             >
-              {event.mode === "party" ? "PARTY MODE" : "CLASSIC MODE"}
+              {event.mode === "party"
+                ? "PARTY MODE"
+                : event.mode === "battle"
+                  ? "BATTLE"
+                  : "CLASSIC MODE"}
             </Text>
           </View>
           <Text style={s.h1}>{event.name}</Text>
@@ -284,7 +337,19 @@ export default function CompetitionScreen({
           </Text>
         </View>
         <ErrorText message={actionError || error} />
-        {ended ? (
+        {battleWarning && tab !== "battle" && (
+          <View style={[s.error, { borderColor: colors.red }]}>
+            <Icon name="warning-outline" color={colors.red} />
+            <Text style={{ color: colors.red, flex: 1, fontWeight: "800" }}>
+              {battleRemaining >= 3600
+                ? `${Math.ceil(battleRemaining / 3600)} hour${Math.ceil(battleRemaining / 3600) === 1 ? "" : "s"} left`
+                : battleRemaining >= 60
+                  ? `${Math.ceil(battleRemaining / 60)} minute${Math.ceil(battleRemaining / 60) === 1 ? "" : "s"} left`
+                  : `${battleRemaining} second${battleRemaining === 1 ? "" : "s"} left`}
+            </Text>
+          </View>
+        )}
+        {ended && !isBattle ? (
           <Entrance trigger="podium">
             <LinearGradient
               colors={["#3D3D23", "#22251B"]}
@@ -330,7 +395,7 @@ export default function CompetitionScreen({
               })}
             </LinearGradient>
           </Entrance>
-        ) : (
+        ) : !isBattle ? (
           <View
             style={[
               s.card,
@@ -347,7 +412,7 @@ export default function CompetitionScreen({
             </View>
             <Icon name="camera-outline" size={34} color={colors.yellow} />
           </View>
-        )}
+        ) : null}
         <View style={s.tabs}>
           {tabs.map((t) => (
             <Pressable
@@ -363,15 +428,17 @@ export default function CompetitionScreen({
                   { color: tab === t ? colors.yellow : colors.muted },
                 ]}
               >
-                {t === "recap"
-                  ? "Recap"
-                  : t === "feed"
-                    ? "Photos"
-                    : t === "social"
-                      ? "Group"
-                      : t === "party"
-                        ? "Party"
-                        : "Ranks"}
+                {t === "battle"
+                  ? "Battle"
+                  : t === "recap"
+                    ? "Recap"
+                    : t === "feed"
+                      ? "Photos"
+                      : t === "social"
+                        ? "Group"
+                        : t === "party"
+                          ? "Party"
+                          : "Ranks"}
               </Text>
             </Pressable>
           ))}
@@ -405,7 +472,15 @@ export default function CompetitionScreen({
             )}
           </ScrollView>
         )}
-        {tab === "social" ? (
+        {tab === "battle" && detail.battle ? (
+          <BattlePanel
+            detail={detail}
+            me={me}
+            refresh={refresh}
+            onLeft={onBack}
+            onError={setActionError}
+          />
+        ) : tab === "social" ? (
           <SocialPanel detail={detail} me={me.id} />
         ) : tab === "party" ? (
           <PartyPanel
@@ -590,7 +665,7 @@ export default function CompetitionScreen({
           Keep it social. Drink water, know your limits, and look after your
           friends.
         </Text>
-        {!ended && event.host_id === me.id && (
+        {!ended && !isBattle && event.host_id === me.id && (
           <Button
             title="Finish competition"
             secondary
@@ -632,7 +707,7 @@ export default function CompetitionScreen({
           )}
         </View>
       </Modal>
-      {!ended && event.my_role !== "spectator" && (
+      {canCapture && (
         <View
           style={{
             paddingHorizontal: 24,

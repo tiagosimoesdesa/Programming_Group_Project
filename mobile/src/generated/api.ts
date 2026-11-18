@@ -158,6 +158,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/competitions/{event_id}/battle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Battle */
+        get: operations["get_battle_competitions__event_id__battle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/battle/team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Choose Battle Team */
+        put: operations["choose_battle_team_competitions__event_id__battle_team_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/battle/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Battle */
+        post: operations["start_battle_competitions__event_id__battle_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/battle/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave Battle */
+        post: operations["leave_battle_competitions__event_id__battle_leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/competitions/{event_id}": {
         parameters: {
             query?: never;
@@ -383,6 +451,77 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BattleMember */
+        BattleMember: {
+            /** Id */
+            id: string;
+            /** Username */
+            username: string;
+            /** Avatar Url */
+            avatar_url: string | null;
+            /** Count */
+            count?: number | null;
+            /** Points */
+            points?: number | null;
+            /** Rank */
+            rank?: number | null;
+        };
+        /** BattleOut */
+        BattleOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "active" | "complete" | "cancelled";
+            /** Server Time */
+            server_time: number;
+            /** Duration Seconds */
+            duration_seconds: number;
+            /** Started At */
+            started_at: number | null;
+            /** Ends At */
+            ends_at: number | null;
+            /** Warning At */
+            warning_at: number | null;
+            /** Warning */
+            warning: boolean;
+            /** Points Visible */
+            points_visible: boolean;
+            /** My Team */
+            my_team: ("a" | "b") | null;
+            /** Can Start */
+            can_start: boolean;
+            /** Can Change Team */
+            can_change_team: boolean;
+            /** Can Leave */
+            can_leave: boolean;
+            /** Winner */
+            winner: ("a" | "b" | "tie") | null;
+            /** Teams */
+            teams: components["schemas"]["BattleTeam"][];
+        };
+        /** BattleTeam */
+        BattleTeam: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "a" | "b";
+            /** Name */
+            name: string;
+            /** Score */
+            score: number | null;
+            /** Members */
+            members: components["schemas"]["BattleMember"][];
+        };
+        /** BattleTeamChoice */
+        BattleTeamChoice: {
+            /**
+             * Team
+             * @enum {string}
+             */
+            team: "a" | "b";
+        };
         /** Body_avatar_me_avatar_put */
         Body_avatar_me_avatar_put: {
             /** Photo */
@@ -452,7 +591,15 @@ export interface components {
              * Mode
              * @enum {string}
              */
-            mode: "classic" | "party";
+            mode: "classic" | "party" | "battle";
+            /** Battle Duration Seconds */
+            battle_duration_seconds?: (600 | 1800 | 2700 | 3600 | 5400 | 7200 | 10800 | 14400 | 18000 | 21600 | 25200 | 32400 | 36000) | null;
+            /** Battle Points Visible */
+            battle_points_visible?: boolean | null;
+            /** Battle Team A Name */
+            battle_team_a_name?: string | null;
+            /** Battle Team B Name */
+            battle_team_b_name?: string | null;
         };
         /** Credentials */
         Credentials: {
@@ -472,6 +619,7 @@ export interface components {
             next_cursor: string | null;
             /** Recap */
             recap?: components["schemas"]["RecapMoment"][];
+            battle?: components["schemas"]["BattleOut"] | null;
         };
         /** EventOut */
         EventOut: {
@@ -501,9 +649,11 @@ export interface components {
              * Mode
              * @enum {string}
              */
-            mode: "classic" | "party";
+            mode: "classic" | "party" | "battle";
             /** Party Started At */
             party_started_at: number | null;
+            /** Battle Started At */
+            battle_started_at?: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -683,6 +833,8 @@ export interface components {
             points: number;
             /** Rank */
             rank: number;
+            /** Team */
+            team?: ("a" | "b") | null;
         };
         /** Tokens */
         Tokens: {
@@ -995,6 +1147,132 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_battle_competitions__event_id__battle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BattleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    choose_battle_team_competitions__event_id__battle_team_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BattleTeamChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BattleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_battle_competitions__event_id__battle_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BattleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leave_battle_competitions__event_id__battle_leave_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

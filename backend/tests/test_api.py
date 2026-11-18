@@ -450,3 +450,124 @@ def test_legacy_submission_defaults_to_regular(client):
     assert response.status_code == 201
     assert response.json()["pint_count"] == 0
     assert response.json()["beer_points"] == 3
+
+
+def create_battle(client, auth, *, visible=False, duration=600):
+    response = client.post(
+        "/competitions",
+        headers=auth,
+        json={
+            "name": "Pens vs Balloons",
+            "mode": "battle",
+            "battle_duration_seconds": duration,
+            "battle_points_visible": visible,
+            "battle_team_a_name": "Pens",
+            "battle_team_b_name": "Balloons",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def choose_team(client, auth, battle_id, team):
+    return client.put(f"/competitions/{battle_id}/battle/team", headers=auth, json={"team": team})
+
+
+def test_battle_requires_valid_setup_and_lobby_rules(client, monkeypatch):
+    import importlib
+    main_module = importlib.import_module("app.main")
+    host, _ = account(client)
+    guest, _ = account(client, "battle_guest")
+    late, _ = account(client, "battle_late")
+    invalid = {
+        "name": "Bad battle",
+        "mode": "battle",
+        "battle_duration_seconds": 1200,
+        "battle_points_visible": False,
+        "battle_team_a_name": "Same",
+        "battle_team_b_name": "Same",
+    }
+    assert client.post("/competitions", headers=host, json=invalid).status_code == 422
+    battle = create_battle(client, host)
+    path = f"/competitions/{battle['id']}"
+    assert battle["mode"] == "battle" and battle["battle_started_at"] is None
+    assert submit(client, host, battle["id"]).status_code == 409
+    client.post("/competitions/join", headers=guest, json={"code": battle["code"]})
+    assert client.post(path + "/battle/start", headers=guest).status_code == 403
+    assert choose_team(client, host, battle["id"], "a").status_code == 200
+    choose_team(client, guest, battle["id"], "b")
+    waiting = client.get(path + "/battle", headers=host).json()
+    assert waiting["can_start"] is True
+    started_at = int(time.time())
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at)
+    started = client.post(path + "/battle/start", headers=host)
+    assert started.status_code == 200 and started.json()["status"] == "active"
+    assert started.json()["ends_at"] == started_at + 600
+    assert choose_team(client, guest, battle["id"], "a").status_code == 409
+    assert client.post(path + "/battle/leave", headers=guest).status_code == 409
+    assert client.post("/competitions/join", headers=late, json={"code": battle["code"]}).status_code == 409
+    assert client.post(path + "/end", headers=host).status_code == 409
+
+
+def test_private_battle_hides_opponent_until_timer_ends(client, monkeypatch):
+    import importlib
+    main_module = importlib.import_module("app.main")
+    host, _ = account(client)
+    guest, _ = account(client, "private_guest")
+    battle = create_battle(client, host, visible=False)
+    path = f"/competitions/{battle['id']}"
+    client.post("/competitions/join", headers=guest, json={"code": battle["code"]})
+    assert client.get(path + "/social", headers=host).status_code == 409
+    assert client.post(path + "/social/enable", headers=host).status_code == 409
+    choose_team(client, host, battle["id"], "a")
+    choose_team(client, guest, battle["id"], "b")
+    started_at = int(time.time())
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at)
+    client.post(path + "/battle/start", headers=host)
+    host_photo = submit(client, host, battle["id"], beer_count=2, pint_count=1).json()
+    guest_photo = submit(client, guest, battle["id"], beer_count=1).json()
+
+    host_view = client.get(path, headers=host).json()
+    assert [photo["id"] for photo in host_view["feed"]] == [host_photo["id"]]
+    assert [row["username"] for row in host_view["standings"]] == ["alex"]
+    teams = {team["key"]: team for team in host_view["battle"]["teams"]}
+    assert teams["a"]["score"] == 3
+    assert teams["b"]["score"] is None
+    assert teams["b"]["members"][0]["points"] is None
+    assert client.put(path + f"/photos/{guest_photo['id']}/reaction", headers=host, json={"emoji": "🔥"}).status_code == 404
+
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at + 540)
+    warning = client.get(path + "/battle", headers=host).json()
+    assert warning["warning"] is True and warning["ends_at"] - warning["server_time"] == 60
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at + 600)
+    final = client.get(path, headers=host).json()
+    assert final["competition"]["ended_at"] == started_at + 600
+    assert final["battle"]["status"] == "complete" and final["battle"]["winner"] == "a"
+    assert {photo["id"] for photo in final["feed"]} == {host_photo["id"], guest_photo["id"]}
+    assert {row["username"] for row in final["standings"]} == {"alex", "private_guest"}
+    assert submit(client, host, battle["id"]).status_code == 409
+
+
+def test_public_battle_shows_both_teams_and_guest_can_leave_lobby(client, monkeypatch):
+    import importlib
+    main_module = importlib.import_module("app.main")
+    host, _ = account(client)
+    guest, _ = account(client, "public_guest")
+    battle = create_battle(client, host, visible=True, duration=1800)
+    path = f"/competitions/{battle['id']}"
+    client.post("/competitions/join", headers=guest, json={"code": battle["code"]})
+    choose_team(client, guest, battle["id"], "b")
+    assert client.post(path + "/battle/leave", headers=guest).status_code == 204
+    assert client.get(path, headers=guest).status_code == 404
+    client.post("/competitions/join", headers=guest, json={"code": battle["code"]})
+    choose_team(client, host, battle["id"], "a")
+    choose_team(client, guest, battle["id"], "b")
+    started_at = int(time.time())
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at)
+    client.post(path + "/battle/start", headers=host)
+    submit(client, host, battle["id"])
+    guest_photo = submit(client, guest, battle["id"]).json()
+    detail = client.get(path, headers=host).json()
+    assert len(detail["feed"]) == 2
+    assert all(team["score"] == 1 for team in detail["battle"]["teams"])
+    assert client.put(path + f"/photos/{guest_photo['id']}/reaction", headers=host, json={"emoji": "🔥"}).status_code == 200

@@ -33,7 +33,11 @@ class Profile(BaseModel):
 
 class CreateCompetition(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    mode: Literal["classic", "party"]
+    mode: Literal["classic", "party", "battle"]
+    battle_duration_seconds: Literal[600, 1800, 2700, 3600, 5400, 7200, 10800, 14400, 18000, 21600, 25200, 32400, 36000] | None = None
+    battle_points_visible: bool | None = None
+    battle_team_a_name: str | None = Field(default=None, min_length=1, max_length=40)
+    battle_team_b_name: str | None = Field(default=None, min_length=1, max_length=40)
 
     @field_validator("name")
     @classmethod
@@ -42,6 +46,18 @@ class CreateCompetition(BaseModel):
             raise ValueError("Give your night a name")
         return value.strip()
 
+    @field_validator("battle_team_a_name", "battle_team_b_name")
+    @classmethod
+    def trim_team_name(cls, value):
+        return value.strip() if value is not None else value
+
+    @field_validator("battle_team_b_name")
+    @classmethod
+    def different_team_names(cls, value, info):
+        first = info.data.get("battle_team_a_name")
+        if value and first and value.casefold() == first.casefold():
+            raise ValueError("Team names must be different")
+        return value
 
 class JoinCompetition(BaseModel):
     code: str = Field(pattern=r"^(?:[A-Za-z0-9]{8}|[A-Za-z0-9]{10})$")
@@ -57,8 +73,9 @@ class EventOut(BaseModel):
     revision: int
     participants: int
     my_role: Literal["player", "spectator"] = "player"
-    mode: Literal["classic", "party"]
+    mode: Literal["classic", "party", "battle"]
     party_started_at: int | None
+    battle_started_at: int | None = None
 
 
 class Standing(Profile):
@@ -66,6 +83,41 @@ class Standing(Profile):
     challenge_points: int = 0
     points: int
     rank: int
+    team: Literal["a", "b"] | None = None
+
+
+class BattleTeamChoice(BaseModel):
+    team: Literal["a", "b"]
+
+
+class BattleMember(Profile):
+    count: int | None = None
+    points: int | None = None
+    rank: int | None = None
+
+
+class BattleTeam(BaseModel):
+    key: Literal["a", "b"]
+    name: str
+    score: int | None
+    members: list[BattleMember]
+
+
+class BattleOut(BaseModel):
+    status: Literal["waiting", "active", "complete", "cancelled"]
+    server_time: int
+    duration_seconds: int
+    started_at: int | None
+    ends_at: int | None
+    warning_at: int | None
+    warning: bool
+    points_visible: bool
+    my_team: Literal["a", "b"] | None
+    can_start: bool
+    can_change_team: bool
+    can_leave: bool
+    winner: Literal["a", "b", "tie"] | None
+    teams: list[BattleTeam]
 
 
 class PhotoOut(BaseModel):
@@ -160,3 +212,4 @@ class EventDetail(BaseModel):
     feed: list[PhotoOut]
     next_cursor: str | None
     recap: list[RecapMoment] = Field(default_factory=list)
+    battle: BattleOut | None = None

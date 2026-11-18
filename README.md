@@ -8,11 +8,12 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 
 - Charcoal/yellow interface, onboarding, username/password accounts, optional avatars, and legal-age self-attestation.
 - Private competitions with shareable invitation codes and multiple active events per user.
-- Host-selected **Classic** and **Party** modes before the invitation code is created. Classic scores drink photo pairs; Party adds timed, voted photo challenges to the same leaderboard.
+- Host-selected **Classic**, **Party**, and **Battle** modes. Classic scores drink photo pairs; Party adds timed, voted photo challenges; Battle puts two named teams into a timed points competition.
 - Rear camera → selfie → preview/retake → confirm visible beer count → submit. Gallery access is available **only for profile pictures**.
 - Private photo feed, live standings, shared ranks, host-only finish, top-three rank groups, and history.
 - Player filters, full-screen photo pairs, and one changeable reaction per person per photo.
 - Party Mode starts when the host is ready and at least two players are present. It reveals one safe photo challenge every 30 minutes for up to eight hours; each approved rear-photo/selfie pair earns two bonus points.
+- Battle hosts choose a fixed duration, team names, and whether opposing scores and photos are shown live or revealed only at the end. Players join by code, choose or switch teams in the lobby, and are locked in when the host starts. The final 10% shows a countdown warning; final team totals and each team’s member ranking are revealed when time expires.
 - Host-generated spectator codes let invited friends from other groups watch, react, and revisit the night without posting, voting, or appearing in the standings. Join them using the normal invitation-code form. There is no public group directory.
 - Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
 - SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
@@ -101,6 +102,7 @@ The [validation record](docs/VALIDATION.md) lists completed checks, remaining de
 - `backend/`: API, database models/migrations, image validation/storage, and tests.
 - Database locks serialize submissions, joins, and ending for each event; scores come from accepted records. SQLite uses its database write lock; PostgreSQL uses per-event row locks.
 - Party schedules, active-round checks, majority voting, and combined scoring are enforced by Python on the server. The mobile countdown is presentational; server time is authoritative.
+- Battle membership, start/finish times, team switching, submission windows, and hidden-score privacy are also enforced by the server. A private battle never returns the opposing team’s photos or scores before its timer ends.
 - WebSockets authenticate through their first message and observe database revisions every two seconds. This works across workers for small groups; larger scale should use a shared event broker. Mobile polling runs every eight seconds while disconnected, with resync on foreground/reconnect.
 - Feed pages contain 20 photos. Live refresh returns to the latest page. Signed URLs last ten minutes; active event views refresh periodically.
 - Failed captures stay available during the current app session. Offline background queues are not implemented.
@@ -122,7 +124,8 @@ share a dense rank (1, 1, 2).
 
 Apply `uv run alembic upgrade head` before starting the updated backend.
 Migration 0006 preserves historical quantities, treating existing drinks as
-regular beers. Photograph validation, storage, and idempotency still gate the
+regular beers. Migration 0007 adds Battle settings and team membership without
+changing existing competitions. Photograph validation, storage, and idempotency still gate the
 single committed submission from which both statistics are derived.
 
 To check locally, run `uv run pytest -q` in `backend` and `npm run typecheck` in

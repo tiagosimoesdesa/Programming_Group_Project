@@ -1,6 +1,6 @@
 import time
 import uuid
-from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint, JSON, false
+from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint, JSON, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -31,6 +31,11 @@ class Competition(Base):
     party_started_at: Mapped[int | None]
     spectator_code: Mapped[str | None] = mapped_column(String(10), unique=True, index=True)
     challenges_enabled: Mapped[bool] = mapped_column(default=False, server_default=false())
+    battle_duration_seconds: Mapped[int | None]
+    battle_points_visible: Mapped[bool] = mapped_column(default=True, server_default=true())
+    battle_team_a_name: Mapped[str | None] = mapped_column(String(40))
+    battle_team_b_name: Mapped[str | None] = mapped_column(String(40))
+    battle_started_at: Mapped[int | None]
 
 
 class Membership(Base):
@@ -38,6 +43,7 @@ class Membership(Base):
     competition_id: Mapped[str] = mapped_column(ForeignKey("competitions.id"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     role: Mapped[str] = mapped_column(String(16), default="player", server_default="player")
+    team: Mapped[str | None] = mapped_column(String(1))
 
 
 class PartyRound(Base):

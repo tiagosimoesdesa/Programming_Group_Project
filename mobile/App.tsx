@@ -45,6 +45,22 @@ import {
   s,
 } from "./src/ui";
 
+const BATTLE_DURATIONS = [
+  [600, "10 min"],
+  [1800, "30 min"],
+  [2700, "45 min"],
+  [3600, "1 hour"],
+  [5400, "1.5 hours"],
+  [7200, "2 hours"],
+  [10800, "3 hours"],
+  [14400, "4 hours"],
+  [18000, "5 hours"],
+  [21600, "6 hours"],
+  [25200, "7 hours"],
+  [32400, "9 hours"],
+  [36000, "10 hours"],
+] as const;
+
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -64,11 +80,19 @@ function Root() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"home" | "history" | "profile">("home");
   const [selected, setSelected] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<"create" | "join" | null>(null);
+  const [sheet, setSheet] = useState<
+    "create" | "join" | "battle-menu" | "battle-create" | "battle-join" | null
+  >(null);
   const [value, setValue] = useState("");
   const [selectedMode, setSelectedMode] = useState<"classic" | "party" | null>(
     null,
   );
+  const [battleDuration, setBattleDuration] = useState<number | null>(null);
+  const [battlePointsVisible, setBattlePointsVisible] = useState<
+    boolean | null
+  >(null);
+  const [teamA, setTeamA] = useState("");
+  const [teamB, setTeamB] = useState("");
   const [sheetError, setSheetError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,11 +164,24 @@ function Root() {
     setBusy(true);
     setSheetError("");
     try {
+      const creatingBattle = sheet === "battle-create";
+      const creatingNight = sheet === "create";
       const result = await post<Competition>(
-        sheet === "create" ? "/competitions" : "/competitions/join",
-        sheet === "create"
-          ? { name: value.trim(), mode: selectedMode }
-          : { code: value.trim().toUpperCase() },
+        creatingBattle || creatingNight
+          ? "/competitions"
+          : "/competitions/join",
+        creatingBattle
+          ? {
+              name: `${teamA.trim()} vs ${teamB.trim()}`,
+              mode: "battle",
+              battle_duration_seconds: battleDuration,
+              battle_points_visible: battlePointsVisible,
+              battle_team_a_name: teamA.trim(),
+              battle_team_b_name: teamB.trim(),
+            }
+          : creatingNight
+            ? { name: value.trim(), mode: selectedMode }
+            : { code: value.trim().toUpperCase() },
       );
       setSheet(null);
       setSelected(result.id);
@@ -213,10 +250,16 @@ function Root() {
       ],
     );
   }
-  function openSheet(mode: "create" | "join") {
+  function openSheet(
+    mode: "create" | "join" | "battle-menu" | "battle-create" | "battle-join",
+  ) {
     setSheet(mode);
     setValue("");
     setSelectedMode(null);
+    setBattleDuration(null);
+    setBattlePointsVisible(null);
+    setTeamA("");
+    setTeamB("");
     setSheetError("");
   }
   function eventCard(event: Competition) {
@@ -247,7 +290,11 @@ function Root() {
               { color: event.mode === "party" ? colors.yellow : colors.muted },
             ]}
           >
-            {event.mode === "party" ? "PARTY MODE" : "CLASSIC MODE"}
+            {event.mode === "party"
+              ? "PARTY MODE"
+              : event.mode === "battle"
+                ? "BATTLE"
+                : "CLASSIC MODE"}
           </Text>
           <View style={s.between}>
             <Text style={s.small}>
@@ -386,6 +433,11 @@ function Root() {
                   <Icon name="arrow-forward" size={18} />
                 </Pressable>
               </LinearGradient>
+              <Button
+                title="Battle"
+                icon="trophy-outline"
+                onPress={() => openSheet("battle-menu")}
+              />
               <Button
                 title="Have a code? Join your friends"
                 secondary
@@ -564,7 +616,11 @@ function Root() {
           >
             <View style={s.between}>
               <Text style={s.eyebrow}>
-                {sheet === "create" ? "ASSEMBLE YOUR PEOPLE" : "YOU’RE INVITED"}
+                {sheet?.startsWith("battle")
+                  ? "BATTLE"
+                  : sheet === "create"
+                    ? "ASSEMBLE YOUR PEOPLE"
+                    : "YOU’RE INVITED"}
               </Text>
               <Pressable
                 disabled={busy}
@@ -576,28 +632,158 @@ function Root() {
               </Pressable>
             </View>
             <Text style={s.h2}>
-              {sheet === "create"
-                ? "Give the night a name."
-                : "Meet you in there."}
+              {sheet === "battle-menu"
+                ? "Ready to compete?"
+                : sheet === "battle-create"
+                  ? "Create your battle."
+                  : sheet === "battle-join"
+                    ? "Enter the battle."
+                    : sheet === "create"
+                      ? "Give the night a name."
+                      : "Meet you in there."}
             </Text>
             <Text style={s.body}>
-              {sheet === "create"
-                ? "Your competition opens immediately. Share the code with friends to bring them in."
-                : "Enter the 8-character invitation code from your host."}
+              {sheet === "battle-menu"
+                ? "Create a two-team battle or enter one with the host’s code."
+                : sheet === "battle-create"
+                  ? "Choose the rules and name both teams. You’ll receive a code to share after creation."
+                  : sheet === "create"
+                    ? "Your competition opens immediately. Share the code with friends to bring them in."
+                    : "Enter the 8-character invitation code from your host."}
             </Text>
-            <Input
-              label={
-                sheet === "create" ? "Competition name" : "Invitation code"
-              }
-              placeholder={
-                sheet === "create" ? "Friday with the usuals" : "ABCD2345"
-              }
-              value={value}
-              onChangeText={setValue}
-              maxLength={sheet === "create" ? 60 : 10}
-              autoCapitalize={sheet === "create" ? "sentences" : "characters"}
-              autoCorrect={false}
-            />
+            {sheet === "battle-menu" && (
+              <View style={{ gap: 12 }}>
+                <Button
+                  title="Create Battle"
+                  icon="add-circle-outline"
+                  onPress={() => openSheet("battle-create")}
+                />
+                <Button
+                  title="Enter Battle"
+                  secondary
+                  icon="enter-outline"
+                  onPress={() => openSheet("battle-join")}
+                />
+              </View>
+            )}
+            {(sheet === "create" ||
+              sheet === "join" ||
+              sheet === "battle-join") && (
+              <Input
+                label={
+                  sheet === "create"
+                    ? "Competition name"
+                    : sheet === "battle-join"
+                      ? "Battle code"
+                      : "Invitation code"
+                }
+                placeholder={
+                  sheet === "create" ? "Friday with the usuals" : "ABCD2345"
+                }
+                value={value}
+                onChangeText={setValue}
+                maxLength={sheet === "create" ? 60 : 10}
+                autoCapitalize={sheet === "create" ? "sentences" : "characters"}
+                autoCorrect={false}
+              />
+            )}
+            {sheet === "battle-create" && (
+              <View style={{ gap: 20 }}>
+                <Input
+                  label="Team one"
+                  placeholder="Pens"
+                  value={teamA}
+                  onChangeText={setTeamA}
+                  maxLength={40}
+                />
+                <Input
+                  label="Team two"
+                  placeholder="Balloons"
+                  value={teamB}
+                  onChangeText={setTeamB}
+                  maxLength={40}
+                />
+                <View style={{ gap: 10 }}>
+                  <Text style={s.label}>Duration</Text>
+                  <View
+                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                  >
+                    {BATTLE_DURATIONS.map(([seconds, label]) => (
+                      <Pressable
+                        key={seconds}
+                        accessibilityRole="radio"
+                        accessibilityState={{
+                          selected: battleDuration === seconds,
+                        }}
+                        onPress={() => setBattleDuration(seconds)}
+                        style={[
+                          s.pill,
+                          {
+                            paddingHorizontal: 14,
+                            paddingVertical: 11,
+                            borderWidth: 1,
+                            borderColor:
+                              battleDuration === seconds
+                                ? colors.yellow
+                                : colors.line,
+                          },
+                        ]}
+                      >
+                        <Text style={s.label}>{label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <View style={{ gap: 10 }}>
+                  <Text style={s.label}>During the battle</Text>
+                  {[
+                    {
+                      value: true,
+                      title: "Show points",
+                      body: "Both teams can see every score and photo live.",
+                    },
+                    {
+                      value: false,
+                      title: "Hide points",
+                      body: "Each team sees only its own score and photos until time is up.",
+                    },
+                  ].map((option) => (
+                    <Pressable
+                      key={String(option.value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        selected: battlePointsVisible === option.value,
+                      }}
+                      onPress={() => setBattlePointsVisible(option.value)}
+                      style={[
+                        s.card,
+                        { padding: 16, gap: 5 },
+                        battlePointsVisible === option.value && {
+                          borderColor: colors.yellow,
+                        },
+                      ]}
+                    >
+                      <View style={s.between}>
+                        <Text style={s.h3}>{option.title}</Text>
+                        <Icon
+                          name={
+                            battlePointsVisible === option.value
+                              ? "radio-button-on"
+                              : "radio-button-off"
+                          }
+                          color={
+                            battlePointsVisible === option.value
+                              ? colors.yellow
+                              : colors.muted
+                          }
+                        />
+                      </View>
+                      <Text style={s.small}>{option.body}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            )}
             {sheet === "create" && (
               <View style={{ gap: 10 }}>
                 <Text style={s.label}>Which mode do you want to play?</Text>
@@ -646,17 +832,36 @@ function Root() {
                 ))}
               </View>
             )}
-            <ErrorText message={sheetError} />
-            <Button
-              title={sheet === "create" ? "Start the night" : "Join the night"}
-              loading={busy}
-              disabled={
-                sheet === "create"
-                  ? !value.trim() || !selectedMode
-                  : ![8, 10].includes(value.trim().length)
-              }
-              onPress={() => void saveEvent()}
-            />
+            {sheet !== "battle-menu" && (
+              <>
+                <ErrorText message={sheetError} />
+                <Button
+                  title={
+                    sheet === "battle-create"
+                      ? "Create Battle"
+                      : sheet === "battle-join"
+                        ? "Enter Battle"
+                        : sheet === "create"
+                          ? "Start the night"
+                          : "Join the night"
+                  }
+                  loading={busy}
+                  disabled={
+                    sheet === "battle-create"
+                      ? !teamA.trim() ||
+                        !teamB.trim() ||
+                        teamA.trim().toLowerCase() ===
+                          teamB.trim().toLowerCase() ||
+                        !battleDuration ||
+                        battlePointsVisible === null
+                      : sheet === "create"
+                        ? !value.trim() || !selectedMode
+                        : ![8, 10].includes(value.trim().length)
+                  }
+                  onPress={() => void saveEvent()}
+                />
+              </>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>

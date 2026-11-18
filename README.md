@@ -9,7 +9,7 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 - Charcoal/yellow interface, onboarding, username/password accounts, optional avatars, and legal-age self-attestation.
 - Private competitions with shareable invitation codes and multiple active events per user.
 - Host-selected **Classic** and **Party** modes before the invitation code is created. Classic scores drink photo pairs; Party adds timed, voted photo challenges to the same leaderboard.
-- Rear camera → selfie → preview/retake → submit. Gallery access is available **only for profile pictures**.
+- Rear camera → selfie → preview/retake → confirm visible beer count → submit. Gallery access is available **only for profile pictures**.
 - Private photo feed, live standings, shared ranks, host-only finish, top-three rank groups, and history.
 - Player filters, full-screen photo pairs, and one changeable reaction per person per photo.
 - Party Mode starts when the host is ready and at least two players are present. It reveals one safe photo challenge every 30 minutes for up to eight hours; each approved rear-photo/selfie pair earns two bonus points.
@@ -17,7 +17,7 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 - Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
 - SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
 
-Check-ins are trust-based. Each accepted photo pair is one beer/one point; the app cannot verify consumption or that a drink is new. Only confirmed submissions change the score.
+Check-ins are trust-based. Players confirm how many beers are visible in each accepted drink photo, and each confirmed beer is one point. The app cannot verify consumption, ownership, or that a drink is new. Only confirmed submissions change the score.
 
 ## Requirements
 

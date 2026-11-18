@@ -35,8 +35,13 @@ def image():
     return out.getvalue()
 
 
-def submit(client, auth, event_id, key=None):
-    return client.post(f"/competitions/{event_id}/submissions", headers={**auth, "Idempotency-Key": key or str(uuid.uuid4())}, files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")})
+def submit(client, auth, event_id, key=None, beer_count=1):
+    return client.post(
+        f"/competitions/{event_id}/submissions",
+        headers={**auth, "Idempotency-Key": key or str(uuid.uuid4())},
+        data={"beer_count": str(beer_count)},
+        files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")},
+    )
 
 
 def test_registration_and_auth(client):
@@ -112,6 +117,26 @@ def test_invalid_photo_and_missing_pair(client):
     response = client.post(path, headers=headers, files={"rear": ("photo.jpg", b"not a photo", "image/jpeg"), "front": ("photo.jpg", image(), "image/jpeg")})
     assert response.status_code == 422
     assert client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]["count"] == 0
+
+
+def test_beer_count_is_saved_summed_and_validated(client):
+    host, _ = account(client)
+    night = event(client, host)
+    path = f"/competitions/{night['id']}"
+
+    first = submit(client, host, night["id"], beer_count=3)
+    second = submit(client, host, night["id"], beer_count=2)
+
+    assert first.status_code == 201 and first.json()["beer_count"] == 3
+    assert second.status_code == 201 and second.json()["beer_count"] == 2
+    detail = client.get(path, headers=host).json()
+    assert detail["standings"][0]["count"] == 5
+    assert detail["standings"][0]["points"] == 5
+    assert sorted(photo["beer_count"] for photo in detail["feed"]) == [2, 3]
+
+    assert submit(client, host, night["id"], beer_count=0).status_code == 422
+    assert submit(client, host, night["id"], beer_count=11).status_code == 422
+    assert client.get(path, headers=host).json()["standings"][0]["count"] == 5
 
 
 def test_storage_failure_does_not_score(client, monkeypatch):

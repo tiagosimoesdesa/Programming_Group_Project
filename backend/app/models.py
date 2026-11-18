@@ -64,6 +64,7 @@ class Submission(Base):
     idempotency_key: Mapped[str] = mapped_column(String(36))
     kind: Mapped[str] = mapped_column(String(16), default="drink", server_default="drink")
     party_round_id: Mapped[str | None] = mapped_column(ForeignKey("party_rounds.id"), index=True)
+    beer_count: Mapped[int] = mapped_column(default=1, server_default="1")
     rear: Mapped[str]
     front: Mapped[str]
     created_at: Mapped[int] = mapped_column(default=lambda: int(time.time()))

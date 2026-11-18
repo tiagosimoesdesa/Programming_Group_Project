@@ -1091,6 +1091,13 @@
             "type": "string",
             "contentMediaType": "application/octet-stream",
             "title": "Front"
+          },
+          "beer_count": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Beer Count",
+            "default": 1
           }
         },
         "type": "object",
@@ -1612,6 +1619,12 @@
             "type": "integer",
             "title": "Created At"
           },
+          "beer_count": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Beer Count"
+          },
           "reactions": {
             "additionalProperties": {
               "type": "integer"
@@ -1657,7 +1670,8 @@
           "user",
           "rear_url",
           "front_url",
-          "created_at"
+          "created_at",
+          "beer_count"
         ],
         "title": "PhotoOut"
       },

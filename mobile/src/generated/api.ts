@@ -394,6 +394,11 @@ export interface components {
             rear: string;
             /** Front */
             front: string;
+            /**
+             * Beer Count
+             * @default 1
+             */
+            beer_count: number;
         };
         /** Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post */
         Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post: {
@@ -576,6 +581,8 @@ export interface components {
             front_url: string;
             /** Created At */
             created_at: number;
+            /** Beer Count */
+            beer_count: number;
             /** Reactions */
             reactions?: {
                 [key: string]: number;

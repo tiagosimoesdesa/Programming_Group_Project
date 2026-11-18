@@ -79,6 +79,7 @@ export default function CompetitionScreen({
       const form = new FormData();
       form.append("rear", await imagePart(capture.rear, "rear.jpg"));
       form.append("front", await imagePart(capture.front, "front.jpg"));
+      form.append("beer_count", String(capture.beerCount));
       await request(`/competitions/${id}/submissions`, {
         method: "POST",
         headers: { "Idempotency-Key": capture.key },
@@ -172,6 +173,7 @@ export default function CompetitionScreen({
         onClose={() => setPartyCapture(null)}
         busy={busy}
         error={actionError}
+        countBeers={false}
       />
     );
   if (camera && detail)
@@ -522,7 +524,7 @@ export default function CompetitionScreen({
                     <Text style={{ color: colors.bg, fontWeight: "800" }}>
                       {photo.kind === "challenge"
                         ? "+2 CHALLENGE"
-                        : "+1 MOMENT"}
+                        : `+${photo.beer_count} ${photo.beer_count === 1 ? "BEER" : "BEERS"}`}
                     </Text>
                   </View>
                 </Pressable>

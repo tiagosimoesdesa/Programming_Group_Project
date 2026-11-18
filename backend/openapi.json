@@ -590,6 +590,230 @@
         }
       }
     },
+    "/competitions/{event_id}/party": {
+      "get": {
+        "summary": "Get Party",
+        "operationId": "get_party_competitions__event_id__party_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/party/start": {
+      "post": {
+        "summary": "Start Party",
+        "operationId": "start_party_competitions__event_id__party_start_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/party/rounds/{round_id}/attempts": {
+      "post": {
+        "summary": "Submit Party Attempt",
+        "operationId": "submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "round_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Round Id"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/competitions/{event_id}/party/attempts/{attempt_id}/vote": {
+      "put": {
+        "summary": "Vote Party Attempt",
+        "operationId": "vote_party_attempt_competitions__event_id__party_attempts__attempt_id__vote_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attempt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/competitions/{event_id}/social": {
       "get": {
         "summary": "Social",
@@ -876,6 +1100,26 @@
         ],
         "title": "Body_submit_competitions__event_id__submissions_post"
       },
+      "Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post": {
+        "properties": {
+          "rear": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Rear"
+          },
+          "front": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Front"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rear",
+          "front"
+        ],
+        "title": "Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post"
+      },
       "ChallengeResult": {
         "properties": {
           "id": {
@@ -965,11 +1209,20 @@
             "maxLength": 60,
             "minLength": 1,
             "title": "Name"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "classic",
+              "party"
+            ],
+            "title": "Mode"
           }
         },
         "type": "object",
         "required": [
-          "name"
+          "name",
+          "mode"
         ],
         "title": "CreateCompetition"
       },
@@ -1090,6 +1343,25 @@
             ],
             "title": "My Role",
             "default": "player"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "classic",
+              "party"
+            ],
+            "title": "Mode"
+          },
+          "party_started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party Started At"
           }
         },
         "type": "object",
@@ -1101,7 +1373,9 @@
           "created_at",
           "ended_at",
           "revision",
-          "participants"
+          "participants",
+          "mode",
+          "party_started_at"
         ],
         "title": "EventOut"
       },
@@ -1131,6 +1405,191 @@
           "code"
         ],
         "title": "JoinCompetition"
+      },
+      "PartyAttemptOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "round_id": {
+            "type": "string",
+            "title": "Round Id"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "photo": {
+            "$ref": "#/components/schemas/PhotoOut"
+          },
+          "approvals": {
+            "type": "integer",
+            "title": "Approvals"
+          },
+          "required": {
+            "type": "integer",
+            "title": "Required"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "pending",
+              "not_approved"
+            ],
+            "title": "Status"
+          },
+          "can_vote": {
+            "type": "boolean",
+            "title": "Can Vote"
+          },
+          "my_vote": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Vote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "round_id",
+          "prompt",
+          "photo",
+          "approvals",
+          "required",
+          "status",
+          "can_vote",
+          "my_vote"
+        ],
+        "title": "PartyAttemptOut"
+      },
+      "PartyOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "active",
+              "complete",
+              "ended"
+            ],
+            "title": "Status"
+          },
+          "server_time": {
+            "type": "integer",
+            "title": "Server Time"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "can_start": {
+            "type": "boolean",
+            "title": "Can Start"
+          },
+          "active_round": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartyRoundOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/PartyRoundOut"
+            },
+            "type": "array",
+            "title": "Rounds"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/PartyAttemptOut"
+            },
+            "type": "array",
+            "title": "Attempts"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Scores"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "server_time",
+          "started_at",
+          "ends_at",
+          "can_start",
+          "active_round",
+          "rounds",
+          "attempts",
+          "scores"
+        ],
+        "title": "PartyOut"
+      },
+      "PartyRoundOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "starts_at": {
+            "type": "integer",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "integer",
+            "title": "Ends At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sequence",
+          "prompt",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "PartyRoundOut"
       },
       "PhotoOut": {
         "properties": {
@@ -1170,6 +1629,26 @@
               }
             ],
             "title": "My Reaction"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "drink",
+              "challenge"
+            ],
+            "title": "Kind",
+            "default": "drink"
+          },
+          "challenge_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Challenge Prompt"
           }
         },
         "type": "object",
@@ -1391,6 +1870,11 @@
           "count": {
             "type": "integer",
             "title": "Count"
+          },
+          "challenge_points": {
+            "type": "integer",
+            "title": "Challenge Points",
+            "default": 0
           },
           "points": {
             "type": "integer",

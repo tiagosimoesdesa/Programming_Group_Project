@@ -8,10 +8,11 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 
 - Charcoal/yellow interface, onboarding, username/password accounts, optional avatars, and legal-age self-attestation.
 - Private competitions with shareable invitation codes and multiple active events per user.
+- Host-selected **Classic** and **Party** modes before the invitation code is created. Classic scores drink photo pairs; Party adds timed, voted photo challenges to the same leaderboard.
 - Rear camera → selfie → preview/retake → submit. Gallery access is available **only for profile pictures**.
 - Private photo feed, live standings, shared ranks, host-only finish, top-three rank groups, and history.
 - Player filters, full-screen photo pairs, and one changeable reaction per person per photo.
-- Optional photo challenges in the Group tab: choose an existing photo, get majority approval from the other players present at submission, and earn separate challenge points. Voting closes with the night.
+- Party Mode starts when the host is ready and at least two players are present. It reveals one safe photo challenge every 30 minutes for up to eight hours; each approved rear-photo/selfie pair earns two bonus points.
 - Host-generated spectator codes let invited friends from other groups watch, react, and revisit the night without posting, voting, or appearing in the standings. Join them using the normal invitation-code form. There is no public group directory.
 - Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
 - SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
@@ -97,6 +98,7 @@ The [validation record](docs/VALIDATION.md) lists completed checks, remaining de
 - `mobile/`: screens, reusable UI, authenticated HTTP client, camera flow, and live subscriptions.
 - `backend/`: API, database models/migrations, image validation/storage, and tests.
 - Database locks serialize submissions, joins, and ending for each event; scores come from accepted records. SQLite uses its database write lock; PostgreSQL uses per-event row locks.
+- Party schedules, active-round checks, majority voting, and combined scoring are enforced by Python on the server. The mobile countdown is presentational; server time is authoritative.
 - WebSockets authenticate through their first message and observe database revisions every two seconds. This works across workers for small groups; larger scale should use a shared event broker. Mobile polling runs every eight seconds while disconnected, with resync on foreground/reconnect.
 - Feed pages contain 20 photos. Live refresh returns to the latest page. Signed URLs last ten minutes; active event views refresh periodically.
 - Failed captures stay available during the current app session. Offline background queues are not implemented.

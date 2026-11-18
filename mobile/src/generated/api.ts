@@ -226,6 +226,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/competitions/{event_id}/party": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Party */
+        get: operations["get_party_competitions__event_id__party_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/party/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Party */
+        post: operations["start_party_competitions__event_id__party_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/party/rounds/{round_id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Party Attempt */
+        post: operations["submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/competitions/{event_id}/party/attempts/{attempt_id}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Vote Party Attempt */
+        put: operations["vote_party_attempt_competitions__event_id__party_attempts__attempt_id__vote_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/competitions/{event_id}/social": {
         parameters: {
             query?: never;
@@ -327,6 +395,13 @@ export interface components {
             /** Front */
             front: string;
         };
+        /** Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post */
+        Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post: {
+            /** Rear */
+            rear: string;
+            /** Front */
+            front: string;
+        };
         /** ChallengeResult */
         ChallengeResult: {
             /** Id */
@@ -362,6 +437,11 @@ export interface components {
         CreateCompetition: {
             /** Name */
             name: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "classic" | "party";
         };
         /** Credentials */
         Credentials: {
@@ -406,6 +486,13 @@ export interface components {
              * @enum {string}
              */
             my_role: "player" | "spectator";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "classic" | "party";
+            /** Party Started At */
+            party_started_at: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -416,6 +503,67 @@ export interface components {
         JoinCompetition: {
             /** Code */
             code: string;
+        };
+        /** PartyAttemptOut */
+        PartyAttemptOut: {
+            /** Id */
+            id: string;
+            /** Round Id */
+            round_id: string;
+            /** Prompt */
+            prompt: string;
+            photo: components["schemas"]["PhotoOut"];
+            /** Approvals */
+            approvals: number;
+            /** Required */
+            required: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "pending" | "not_approved";
+            /** Can Vote */
+            can_vote: boolean;
+            /** My Vote */
+            my_vote: boolean | null;
+        };
+        /** PartyOut */
+        PartyOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "active" | "complete" | "ended";
+            /** Server Time */
+            server_time: number;
+            /** Started At */
+            started_at: number | null;
+            /** Ends At */
+            ends_at: number | null;
+            /** Can Start */
+            can_start: boolean;
+            active_round: components["schemas"]["PartyRoundOut"] | null;
+            /** Rounds */
+            rounds: components["schemas"]["PartyRoundOut"][];
+            /** Attempts */
+            attempts: components["schemas"]["PartyAttemptOut"][];
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
+        };
+        /** PartyRoundOut */
+        PartyRoundOut: {
+            /** Id */
+            id: string;
+            /** Sequence */
+            sequence: number;
+            /** Prompt */
+            prompt: string;
+            /** Starts At */
+            starts_at: number;
+            /** Ends At */
+            ends_at: number;
         };
         /** PhotoOut */
         PhotoOut: {
@@ -434,6 +582,14 @@ export interface components {
             };
             /** My Reaction */
             my_reaction?: string | null;
+            /**
+             * Kind
+             * @default drink
+             * @enum {string}
+             */
+            kind: "drink" | "challenge";
+            /** Challenge Prompt */
+            challenge_prompt?: string | null;
         };
         /** Profile */
         Profile: {
@@ -501,6 +657,11 @@ export interface components {
             avatar_url: string | null;
             /** Count */
             count: number;
+            /**
+             * Challenge Points
+             * @default 0
+             */
+            challenge_points: number;
             /** Points */
             points: number;
             /** Rank */
@@ -954,6 +1115,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_party_competitions__event_id__party_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_party_competitions__event_id__party_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path: {
+                event_id: string;
+                round_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_submit_party_attempt_competitions__event_id__party_rounds__round_id__attempts_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vote_party_attempt_competitions__event_id__party_attempts__attempt_id__vote_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+                attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyOut"];
                 };
             };
             /** @description Validation Error */

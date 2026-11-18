@@ -12,6 +12,11 @@ These checks require the user's Android and iPhone. Automated tests cannot certi
 
 ## Shared competition
 
+- [ ] Creating a night requires choosing Classic or Party before the invitation code is generated.
+- [ ] Classic keeps drink-only scoring and does not show the Party tab.
+- [ ] Party cannot start with only the host; with two players, the host can start and both devices receive the first challenge.
+- [ ] A Party challenge shows the same countdown on both devices and changes automatically after 30 minutes.
+- [ ] Each player can submit one rear-photo/selfie pair per challenge; majority approval adds two points to the main leaderboard and the approved pair appears in the feed.
 - [ ] A creates an event; B joins using its shared code; both start at zero.
 - [ ] Joining twice does not duplicate membership; joining late works before closure.
 - [ ] Rear capture switches to front capture; preview images have the correct orientation.

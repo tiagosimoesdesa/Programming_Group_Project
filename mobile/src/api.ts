@@ -8,6 +8,8 @@ export type Competition = components["schemas"]["EventOut"];
 export type Detail = components["schemas"]["EventDetail"];
 export type Standing = components["schemas"]["Standing"];
 export type Photo = components["schemas"]["PhotoOut"];
+export type Party = components["schemas"]["PartyOut"];
+export type PartyRound = components["schemas"]["PartyRoundOut"];
 type Tokens = components["schemas"]["Tokens"];
 export const BASE = (
   (Platform.OS === "web"

@@ -33,6 +33,7 @@ class Profile(BaseModel):
 
 class CreateCompetition(BaseModel):
     name: str = Field(min_length=1, max_length=60)
+    mode: Literal["classic", "party"]
 
     @field_validator("name")
     @classmethod
@@ -56,10 +57,13 @@ class EventOut(BaseModel):
     revision: int
     participants: int
     my_role: Literal["player", "spectator"] = "player"
+    mode: Literal["classic", "party"]
+    party_started_at: int | None
 
 
 class Standing(Profile):
     count: int
+    challenge_points: int = 0
     points: int
     rank: int
 
@@ -72,6 +76,8 @@ class PhotoOut(BaseModel):
     created_at: int
     reactions: dict[str, int] = Field(default_factory=dict)
     my_reaction: str | None = None
+    kind: Literal["drink", "challenge"] = "drink"
+    challenge_prompt: str | None = None
 
 
 class ReactionIn(BaseModel):
@@ -104,6 +110,38 @@ class SocialOut(BaseModel):
     spectators: int
     prompts: dict[str, str]
     claims: list[ChallengeResult]
+    scores: dict[str, int]
+
+
+class PartyRoundOut(BaseModel):
+    id: str
+    sequence: int
+    prompt: str
+    starts_at: int
+    ends_at: int
+
+
+class PartyAttemptOut(BaseModel):
+    id: str
+    round_id: str
+    prompt: str
+    photo: PhotoOut
+    approvals: int
+    required: int
+    status: Literal["approved", "pending", "not_approved"]
+    can_vote: bool
+    my_vote: bool | None
+
+
+class PartyOut(BaseModel):
+    status: Literal["waiting", "active", "complete", "ended"]
+    server_time: int
+    started_at: int | None
+    ends_at: int | None
+    can_start: bool
+    active_round: PartyRoundOut | None
+    rounds: list[PartyRoundOut]
+    attempts: list[PartyAttemptOut]
     scores: dict[str, int]
 
 

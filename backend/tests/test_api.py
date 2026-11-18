@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app import storage
 from app.db import Session
 from app.main import app
-from app.models import Competition, Submission
+from app.models import Competition, PartyRound, Submission
 from app.security import encode
 
 
@@ -23,8 +23,8 @@ def account(client, name="alex"):
     return {"Authorization": f"Bearer {tokens['access_token']}"}, tokens
 
 
-def event(client, auth):
-    response = client.post("/competitions", headers=auth, json={"name": "Friday with the usuals"})
+def event(client, auth, mode="classic"):
+    response = client.post("/competitions", headers=auth, json={"name": "Friday with the usuals", "mode": mode})
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -294,3 +294,61 @@ def test_challenges_and_spectators(client):
     assert client.post(path + "/claims", headers=host, json=body).status_code == 409
     assert client.get(path + "/social", headers=watcher).json()["claims"][0]["status"] == "not_approved"
     assert client.post("/competitions/join", headers=outsider, json={"code": code}).status_code == 409
+
+
+def test_party_mode_rounds_attempts_and_combined_score(client, monkeypatch):
+    import importlib
+    main_module = importlib.import_module("app.main")
+    host, _ = account(client)
+    guest, _ = account(client, "party_guest")
+    assert client.post("/competitions", headers=host, json={"name": "Missing mode"}).status_code == 422
+    assert client.post("/competitions", headers=host, json={"name": "Bad mode", "mode": "arcade"}).status_code == 422
+    classic = event(client, host)
+    assert client.get(f"/competitions/{classic['id']}/party", headers=host).status_code == 409
+    night = event(client, host, "party")
+    path = f"/competitions/{night['id']}"
+    assert night["mode"] == "party" and night["party_started_at"] is None
+    assert client.post(path + "/party/start", headers=host).status_code == 409
+    client.post("/competitions/join", headers=guest, json={"code": night["code"]})
+    assert client.post(path + "/party/start", headers=guest).status_code == 403
+    started_at = int(time.time())
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at)
+    party = client.post(path + "/party/start", headers=host).json()
+    assert party["status"] == "active"
+    assert len(party["rounds"]) == 1
+    assert party["active_round"]["starts_at"] == started_at
+    assert party["active_round"]["ends_at"] == started_at + 1800
+    with Session() as db:
+        assert len(list(db.scalars(select(PartyRound).where(PartyRound.competition_id == night["id"])))) == 16
+    round_id = party["active_round"]["id"]
+    key = str(uuid.uuid4())
+    response = client.post(
+        path + f"/party/rounds/{round_id}/attempts",
+        headers={**host, "Idempotency-Key": key},
+        files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")},
+    )
+    assert response.status_code == 201, response.text
+    attempt = response.json()["attempts"][0]
+    assert attempt["status"] == "pending" and attempt["required"] == 1
+    before_vote = client.get(path, headers=host).json()
+    assert before_vote["standings"][0]["points"] == 0 and before_vote["feed"] == []
+    approved = client.put(path + f"/party/attempts/{attempt['id']}/vote", headers=guest, json={"approve": True}).json()
+    assert approved["scores"] == {before_vote["standings"][0]["id"]: 2}
+    detail = client.get(path, headers=host).json()
+    host_row = next(row for row in detail["standings"] if row["id"] == before_vote["standings"][0]["id"])
+    assert host_row["count"] == 0 and host_row["challenge_points"] == 2 and host_row["points"] == 2
+    assert detail["feed"][0]["kind"] == "challenge"
+    client.put(path + f"/party/attempts/{attempt['id']}/vote", headers=guest, json={"approve": False})
+    revoked = client.get(path, headers=host).json()
+    assert next(row for row in revoked["standings"] if row["id"] == host_row["id"])["points"] == 0
+    assert revoked["feed"] == []
+    client.put(path + f"/party/attempts/{attempt['id']}/vote", headers=guest, json={"approve": True})
+    monkeypatch.setattr(main_module.time, "time", lambda: started_at + 1801)
+    next_party = client.get(path + "/party", headers=host).json()
+    assert next_party["active_round"]["id"] != round_id and len(next_party["rounds"]) == 2
+    expired = client.post(
+        path + f"/party/rounds/{round_id}/attempts",
+        headers={**guest, "Idempotency-Key": str(uuid.uuid4())},
+        files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")},
+    )
+    assert expired.status_code == 409

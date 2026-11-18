@@ -138,24 +138,13 @@ export default function SocialPanel({
               </>
             )}
           </View>
-          <Text style={s.h2}>Side quests.</Text>
-          <Text style={s.body}>
-            Optional photo challenges. One approved challenge = one challenge
-            point, separate from drink counts.
-          </Text>
-          {!data.enabled ? (
+          {data.enabled && (
             <>
-              <Text style={s.small}>Challenges are off for this night.</Text>
-              {event.host_id === me && !ended && (
-                <Button
-                  title="Enable challenges"
-                  loading={busy}
-                  onPress={() => void action("/social/enable")}
-                />
-              )}
-            </>
-          ) : (
-            <>
+              <Text style={s.h2}>Legacy side quests.</Text>
+              <Text style={s.body}>
+                Challenges from a night created before Party Mode remain
+                available here.
+              </Text>
               <Text style={s.small}>
                 A majority of the other players present when you submit must
                 approve. No self-votes. Votes can change until the host finishes

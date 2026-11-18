@@ -90,7 +90,7 @@ function ScreenPreview({
   );
 }
 
-export default function DesktopPreview() {
+function DesktopPreview() {
   const params = new URLSearchParams(window.location.search);
   const embedded = params.get("preview") === "phone";
   const initial = params.get("screen");
@@ -274,6 +274,13 @@ export default function DesktopPreview() {
       </div>
     </div>
   );
+}
+
+export default function WebEntry() {
+  const showStudio =
+    process.env.NODE_ENV !== "production" ||
+    new URLSearchParams(window.location.search).get("studio") === "1";
+  return showStudio ? <DesktopPreview /> : <App />;
 }
 
 const css = `

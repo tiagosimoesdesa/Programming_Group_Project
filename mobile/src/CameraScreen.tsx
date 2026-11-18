@@ -13,7 +13,12 @@ import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as Crypto from "expo-crypto";
 import { Button, colors, ErrorText, Icon, s } from "./ui";
 
-export type Capture = { rear: string; front: string; key: string };
+export type Capture = {
+  rear: string;
+  front: string;
+  key: string;
+  beerCount: number;
+};
 export default function CameraScreen({
   name,
   pending,
@@ -22,6 +27,7 @@ export default function CameraScreen({
   onClose,
   busy,
   error,
+  countBeers = true,
 }: {
   name: string;
   pending: Capture | null;
@@ -30,6 +36,7 @@ export default function CameraScreen({
   onClose: () => void;
   busy: boolean;
   error: string;
+  countBeers?: boolean;
 }) {
   const [permission, ask, getPermission] = useCameraPermissions();
   const [active, setActive] = useState(AppState.currentState === "active");
@@ -63,7 +70,13 @@ export default function CameraScreen({
       if (!rear) {
         setReady(false);
         setRear(resized.uri);
-      } else onPending({ rear, front: resized.uri, key: Crypto.randomUUID() });
+      } else
+        onPending({
+          rear,
+          front: resized.uri,
+          key: Crypto.randomUUID(),
+          beerCount: 1,
+        });
     } catch (e) {
       setLocalError((e as Error).message);
     } finally {
@@ -193,6 +206,64 @@ export default function CameraScreen({
           />
         )}
       </View>
+      {pending && countBeers && (
+        <View
+          style={[
+            s.card,
+            {
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: 14,
+            },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>How many beers are visible?</Text>
+            <Text style={s.small}>
+              Count every beer shown in the drink photo.
+            </Text>
+          </View>
+          <View style={[s.row, { gap: 12 }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Remove one beer"
+              accessibilityState={{ disabled: pending.beerCount === 1 }}
+              disabled={pending.beerCount === 1 || busy}
+              onPress={() =>
+                onPending({
+                  ...pending,
+                  beerCount: Math.max(1, pending.beerCount - 1),
+                })
+              }
+              style={s.iconButton}
+            >
+              <Icon name="remove" />
+            </Pressable>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[s.h2, { minWidth: 28, textAlign: "center" }]}
+            >
+              {pending.beerCount}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add one beer"
+              accessibilityState={{ disabled: pending.beerCount === 10 }}
+              disabled={pending.beerCount === 10 || busy}
+              onPress={() =>
+                onPending({
+                  ...pending,
+                  beerCount: Math.min(10, pending.beerCount + 1),
+                })
+              }
+              style={s.iconButton}
+            >
+              <Icon name="add" />
+            </Pressable>
+          </View>
+        </View>
+      )}
       <ErrorText message={localError || error} />
       {pending ? (
         <View style={{ gap: 10 }}>

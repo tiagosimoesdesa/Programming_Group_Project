@@ -3,7 +3,7 @@ import secrets
 import time
 import uuid
 from contextlib import suppress
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
@@ -191,7 +191,7 @@ def join(body: JoinCompetition, user: User = Depends(current_user), db: DbSessio
 
 def photo_out(db, row, viewer_id=None):
     party_round = db.get(PartyRound, row.party_round_id) if row.party_round_id else None
-    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at, "reactions": dict(db.execute(select(Reaction.emoji, func.count()).where(Reaction.submission_id == row.id).group_by(Reaction.emoji)).all()), "my_reaction": db.scalar(select(Reaction.emoji).where(Reaction.submission_id == row.id, Reaction.user_id == viewer_id)) if viewer_id else None, "kind": row.kind, "challenge_prompt": party_round.prompt if party_round else None}
+    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at, "beer_count": row.beer_count if row.kind == "drink" else 0, "reactions": dict(db.execute(select(Reaction.emoji, func.count()).where(Reaction.submission_id == row.id).group_by(Reaction.emoji)).all()), "my_reaction": db.scalar(select(Reaction.emoji).where(Reaction.submission_id == row.id, Reaction.user_id == viewer_id)) if viewer_id else None, "kind": row.kind, "challenge_prompt": party_round.prompt if party_round else None}
 
 
 def visible_submissions(event_id):
@@ -202,7 +202,7 @@ def visible_submissions(event_id):
 @app.get("/competitions/{event_id}", response_model=EventDetail)
 def detail(event_id: str, before: str | None = None, player: str | None = None, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
-    counts = select(Submission.user_id, func.count().label("n")).where(Submission.competition_id == event_id, Submission.kind == "drink").group_by(Submission.user_id).subquery()
+    counts = select(Submission.user_id, func.sum(Submission.beer_count).label("n")).where(Submission.competition_id == event_id, Submission.kind == "drink").group_by(Submission.user_id).subquery()
     bonuses = select(ChallengeClaim.user_id, (func.count() * PARTY_POINTS).label("n")).where(ChallengeClaim.competition_id == event_id, ChallengeClaim.round_id.is_not(None), ChallengeClaim.approved.is_(True)).group_by(ChallengeClaim.user_id).subquery()
     total = func.coalesce(counts.c.n, 0) + func.coalesce(bonuses.c.n, 0)
     rows = db.execute(select(User, func.coalesce(counts.c.n, 0), func.coalesce(bonuses.c.n, 0)).join(Membership, Membership.user_id == User.id).outerjoin(counts, counts.c.user_id == User.id).outerjoin(bonuses, bonuses.c.user_id == User.id).where(Membership.competition_id == event_id, Membership.role == "player").order_by(total.desc(), User.username)).all()
@@ -236,7 +236,7 @@ def detail(event_id: str, before: str | None = None, player: str | None = None, 
 
 
 @app.post("/competitions/{event_id}/submissions", response_model=PhotoOut, status_code=201)
-def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(), beer_count: int = Form(1, ge=1, le=10), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     member_event(db, event_id, user.id)
     if db.get(Membership, (event_id, user.id)).role != "player":
         raise HTTPException(403, "Spectators cannot submit photos")
@@ -264,7 +264,7 @@ def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(),
             return photo_out(db, existing)
         if event.ended_at:
             raise HTTPException(409, "This competition has finished. Your photo was not counted.")
-        row = Submission(id=photo_id, competition_id=event_id, user_id=user_id, idempotency_key=key, kind="drink", rear=paths[0], front=paths[1])
+        row = Submission(id=photo_id, competition_id=event_id, user_id=user_id, idempotency_key=key, kind="drink", beer_count=beer_count, rear=paths[0], front=paths[1])
         db.add(row)
         db.commit()
         committed = True

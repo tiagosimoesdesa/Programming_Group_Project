@@ -1,5 +1,5 @@
 import { showAlert } from "./confirm";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { APP_NAME } from "./Brand";
 import { post, Profile, Photo } from "./api";
 import {
   Avatar,
@@ -21,6 +21,7 @@ import {
   Empty,
   Entrance,
   ErrorText,
+  formatJols,
   Icon,
   s,
 } from "./ui";
@@ -28,12 +29,27 @@ import { useCompetition } from "./useCompetition";
 import CameraScreen, { Capture } from "./CameraScreen";
 import { imagePart, request } from "./api";
 import NightRecap from "./NightRecap";
+import NightPodium from "./NightPodium";
+import NightBackdrop from "./NightBackdrop";
 import SocialPanel from "./SocialPanel";
 import PartyPanel from "./PartyPanel";
 import BattlePanel from "./BattlePanel";
 
-type CompetitionTab =
-  "feed" | "ranks" | "recap" | "social" | "party" | "battle";
+type LiveTab = "feed" | "ranks" | "social" | "party" | "battle";
+type CompetitionTab = LiveTab | "podium";
+const tabLabels = {
+  podium: "Podium",
+  feed: "Photos",
+  ranks: "Ranks",
+  social: "Group",
+  party: "Party",
+  battle: "Battle",
+};
+const reactions = [
+  { emoji: "❤️", label: "Like", icon: "heart-outline" },
+  { emoji: "😂", label: "Laugh", icon: "happy-outline" },
+  { emoji: "🔥", label: "Fire", icon: "flame-outline" },
+] as const;
 
 export default function CompetitionScreen({
   id,
@@ -53,7 +69,10 @@ export default function CompetitionScreen({
   const [reacting, setReacting] = useState<string | null>(null);
   const { detail, error, connected, refresh, loadMore, loading } =
     useCompetition(id, player);
-  const [selectedTab, setTab] = useState<CompetitionTab | null>(null);
+  const [liveTab, setLiveTab] = useState<LiveTab | null>(null);
+  const [closedTab, setClosedTab] = useState<CompetitionTab | "moments" | null>(
+    null,
+  );
   const [camera, setCamera] = useState(false);
   const [partyCapture, setPartyCapture] = useState<{
     roundId: string;
@@ -64,17 +83,29 @@ export default function CompetitionScreen({
   const [actionError, setActionError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [battleClock, setBattleClock] = useState(0);
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const ended = !!detail?.competition.ended_at;
+  const isBattle = detail?.competition.mode === "battle" && !!detail.battle;
+  const resultsTab = isBattle ? "battle" : "podium";
+  const tab = ended
+    ? (closedTab ?? resultsTab)
+    : (liveTab ?? (isBattle ? "battle" : "feed"));
+  const showingMoments = tab === "moments";
+  useEffect(() => {
+    scroll.current?.scrollTo({ y: 0, animated: false });
+  }, [tab]);
   useEffect(() => {
     const back = BackHandler.addEventListener("hardwareBackPress", () => {
       if (!busy) {
         if (partyCapture) setPartyCapture(null);
         else if (camera) setCamera(false);
+        else if (showingMoments) setClosedTab(resultsTab);
         else onBack();
       }
       return true;
     });
     return () => back.remove();
-  }, [camera, partyCapture, busy, onBack]);
+  }, [camera, partyCapture, busy, showingMoments, resultsTab, onBack]);
   useEffect(() => {
     const battle = detail?.battle;
     if (battle?.status !== "active" || !battle.ends_at) return;
@@ -149,19 +180,16 @@ export default function CompetitionScreen({
   function finish() {
     showAlert(
       "Call it a night?",
-      "This closes photo submissions and challenge voting. Unapproved challenges receive no points. Photos and final standings stay available.",
+      "This closes photo submissions and challenge voting. Unapproved challenges receive no Jols. Photos and final standings stay available.",
       [
         { text: "Keep it open", style: "cancel" },
         {
-          text: "Finish competition",
+          text: "Close the night",
           onPress: () => {
             setBusy(true);
             setActionError("");
             post(`/competitions/${id}/end`)
-              .then(async () => {
-                await refresh();
-                setTab("recap");
-              })
+              .then(refresh)
               .catch((e) => setActionError(e.message))
               .finally(() => setBusy(false));
           },
@@ -220,7 +248,8 @@ export default function CompetitionScreen({
     );
   if (!detail)
     return (
-      <View style={[s.content, { flex: 1 }]}>
+      <View style={[s.root, s.content]}>
+        <NightBackdrop />
         <Button title="Back to nights" secondary onPress={onBack} />
         <ErrorText message={error} />
         {error ? (
@@ -231,15 +260,12 @@ export default function CompetitionScreen({
       </View>
     );
   const event = detail.competition;
-  const ended = !!event.ended_at;
-  const isBattle = event.mode === "battle" && !!detail.battle;
-  const tab = selectedTab ?? (isBattle ? "battle" : ended ? "recap" : "feed");
   const tabs: CompetitionTab[] = isBattle
     ? detail.battle?.status === "waiting"
       ? ["battle"]
       : ["battle", "feed", "ranks"]
     : ended
-      ? ["recap", "feed", "ranks"]
+      ? ["podium", "feed", "ranks"]
       : ["feed", "ranks"];
   if (!isBattle) {
     if (event.mode === "party") tabs.push("party");
@@ -249,6 +275,10 @@ export default function CompetitionScreen({
     !ended &&
     event.my_role !== "spectator" &&
     (!isBattle || detail.battle?.status === "active");
+  const canShare =
+    !ended &&
+    event.my_role !== "spectator" &&
+    (!isBattle || !event.battle_started_at);
   const battleRemaining = Math.max(
     0,
     (detail.battle?.ends_at ?? battleClock) - battleClock,
@@ -259,7 +289,9 @@ export default function CompetitionScreen({
     battleClock >= detail.battle.warning_at;
   return (
     <View style={s.root}>
+      <NightBackdrop bubbles={tab === "podium"} />
       <ScrollView
+        ref={scroll}
         contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
@@ -274,71 +306,119 @@ export default function CompetitionScreen({
       >
         <View style={s.between}>
           <Pressable
-            accessibilityLabel="Back to nights"
-            style={s.iconButton}
-            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel={
+              showingMoments
+                ? isBattle
+                  ? "Back to Battle"
+                  : "Back to podium"
+                : "Back to nights"
+            }
+            style={[
+              s.iconButton,
+              showingMoments && {
+                flexDirection: "row",
+                gap: 6,
+                paddingHorizontal: 12,
+              },
+            ]}
+            onPress={showingMoments ? () => setClosedTab(resultsTab) : onBack}
           >
             <Icon name="arrow-back" />
+            {showingMoments && (
+              <Text style={s.label}>{isBattle ? "Battle" : "Podium"}</Text>
+            )}
           </Pressable>
-          <Text style={s.eyebrow}>
-            {ended ? "ONE FOR THE MEMORIES" : "THE NIGHT IS YOURS"}
-          </Text>
-          <Pressable
-            accessibilityLabel="Share invitation code"
-            disabled={
-              event.my_role === "spectator" ||
-              ended ||
-              (isBattle && !!event.battle_started_at)
-            }
-            style={s.iconButton}
-            onPress={() => {
-              Share.share({
-                message: `Join “${event.name}” on BEERREAL. Invitation code: ${event.code}`,
-              }).catch((e) => setActionError(e.message));
-            }}
-          >
-            <Icon name="share-outline" />
-          </Pressable>
-        </View>
-        <View style={{ gap: 10 }}>
-          <View style={s.row}>
-            <View style={s.pill}>
-              <Text style={s.pillText}>
-                {ended
-                  ? "FINISHED"
-                  : connected
-                    ? "● LIVE NOW"
-                    : "↻ RECONNECTING"}
-              </Text>
-            </View>
-            <Text style={s.small}>{event.participants} friends</Text>
-            <Text
-              style={[
-                s.eyebrow,
-                {
-                  color: event.mode === "party" ? colors.yellow : colors.muted,
-                },
-              ]}
+          {canShare && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Share invitation code"
+              style={s.iconButton}
+              onPress={() => {
+                Share.share({
+                  message: `Join “${event.name}” on ${APP_NAME}. Invitation code: ${event.code}`,
+                }).catch((e) => setActionError(e.message));
+              }}
             >
-              {event.mode === "party"
-                ? "PARTY MODE"
-                : event.mode === "battle"
-                  ? "BATTLE"
-                  : "CLASSIC MODE"}
+              <Icon name="share-outline" />
+            </Pressable>
+          )}
+        </View>
+        {showingMoments ? (
+          <View style={{ alignItems: "center", gap: 5 }}>
+            <Text style={s.body}>{event.name}</Text>
+            <Text
+              accessibilityRole="header"
+              style={[s.h1, { color: colors.yellow, textAlign: "center" }]}
+            >
+              Night moments
             </Text>
           </View>
-          <Text style={s.h1}>{event.name}</Text>
-          <Text style={s.body}>
-            {ended
-              ? "The night ends. The stories don’t."
-              : event.my_role === "spectator"
-                ? "Watching with friends"
-                : `Invite your people · ${event.code}`}
-          </Text>
-        </View>
+        ) : (
+          <>
+            {tab !== "podium" && (
+              <View style={{ gap: 8 }}>
+                <View style={s.row}>
+                  <View style={s.pill}>
+                    <Text style={s.pillText}>
+                      {ended
+                        ? "Finished"
+                        : connected
+                          ? "● Live"
+                          : "Reconnecting"}
+                    </Text>
+                  </View>
+                  <Text style={s.small}>
+                    {event.participants}{" "}
+                    {event.participants === 1 ? "friend" : "friends"}
+                  </Text>
+                  <Text style={s.small}>
+                    {event.mode === "party"
+                      ? "Party"
+                      : isBattle
+                        ? "Battle"
+                        : "Classic"}
+                  </Text>
+                </View>
+                <Text accessibilityRole="header" style={s.h1}>
+                  {event.name}
+                </Text>
+                {canShare && (
+                  <Text style={s.body}>Invite code · {event.code}</Text>
+                )}
+                {!ended && event.my_role === "spectator" && (
+                  <Text style={s.body}>Watching with friends</Text>
+                )}
+              </View>
+            )}
+            <View accessibilityRole="tablist" style={s.tabs}>
+              {tabs.map((option) => (
+                <Pressable
+                  key={option}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: tab === option }}
+                  onPress={() => {
+                    if (ended || option === "podium") setClosedTab(option);
+                    else setLiveTab(option);
+                  }}
+                  style={[s.tab, tab === option && s.activeTab]}
+                >
+                  <Text
+                    style={[
+                      s.label,
+                      { color: tab === option ? colors.yellow : colors.muted },
+                    ]}
+                  >
+                    {tabLabels[option]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
         <ErrorText message={actionError || error} />
         {battleWarning && tab !== "battle" && (
-          <View style={[s.error, { borderColor: colors.red }]}>
+          <View style={s.error} accessibilityLiveRegion="polite">
             <Icon name="warning-outline" color={colors.red} />
             <Text style={{ color: colors.red, flex: 1, fontWeight: "800" }}>
               {battleRemaining >= 3600
@@ -349,100 +429,6 @@ export default function CompetitionScreen({
             </Text>
           </View>
         )}
-        {ended && !isBattle ? (
-          <Entrance trigger="podium">
-            <LinearGradient
-              colors={["#3D3D23", "#22251B"]}
-              style={[s.card, { borderColor: "#62603B" }]}
-            >
-              <View style={s.between}>
-                <Text style={s.eyebrow}>THE FINAL LINEUP</Text>
-                <Icon name="trophy-outline" color={colors.yellow} />
-              </View>
-              {[1, 2, 3].map((rank) => {
-                const group = detail.standings.filter((p) => p.rank === rank);
-                return group.length ? (
-                  <View
-                    key={rank}
-                    style={[s.row, { alignItems: "flex-start" }]}
-                  >
-                    <Text
-                      style={{
-                        width: 40,
-                        color: rank === 1 ? colors.yellow : colors.muted,
-                        fontSize: 32,
-                        fontWeight: "900",
-                      }}
-                    >
-                      {String(rank).padStart(2, "0")}
-                    </Text>
-                    <View style={{ flex: 1, gap: 10 }}>
-                      {group.map((p) => (
-                        <View key={p.id} style={s.row}>
-                          <Avatar user={p} size={34} />
-                          <Text style={[s.h3, { flex: 1 }]}>{p.username}</Text>
-                          <View>
-                            <Text style={s.label}>{p.points} pts</Text>
-                            <Text style={s.small}>
-                              {p.count} {p.count === 1 ? "beer" : "beers"}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null;
-              })}
-            </LinearGradient>
-          </Entrance>
-        ) : !isBattle ? (
-          <View
-            style={[
-              s.card,
-              {
-                flexDirection: "row",
-                alignItems: "center",
-                borderColor: "#514C2B",
-              },
-            ]}
-          >
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={s.h3}>Be here. Be real.</Text>
-              <Text style={s.small}>A drink. A selfie. A shared memory.</Text>
-            </View>
-            <Icon name="camera-outline" size={34} color={colors.yellow} />
-          </View>
-        ) : null}
-        <View style={s.tabs}>
-          {tabs.map((t) => (
-            <Pressable
-              key={t}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === t }}
-              onPress={() => setTab(t)}
-              style={[s.tab, tab === t && s.activeTab]}
-            >
-              <Text
-                style={[
-                  s.label,
-                  { color: tab === t ? colors.yellow : colors.muted },
-                ]}
-              >
-                {t === "battle"
-                  ? "Battle"
-                  : t === "recap"
-                    ? "Recap"
-                    : t === "feed"
-                      ? "Photos"
-                      : t === "social"
-                        ? "Group"
-                        : t === "party"
-                          ? "Party"
-                          : "Ranks"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
         {tab === "feed" && (
           <ScrollView
             horizontal
@@ -473,12 +459,28 @@ export default function CompetitionScreen({
           </ScrollView>
         )}
         {tab === "battle" && detail.battle ? (
-          <BattlePanel
-            detail={detail}
-            me={me}
-            refresh={refresh}
-            onLeft={onBack}
-            onError={setActionError}
+          <View style={{ gap: 16 }}>
+            <BattlePanel
+              detail={detail}
+              me={me}
+              refresh={refresh}
+              onLeft={onBack}
+              onError={setActionError}
+            />
+            {ended && (
+              <Button
+                title="Night moments"
+                icon="images-outline"
+                onPress={() => setClosedTab("moments")}
+              />
+            )}
+          </View>
+        ) : tab === "podium" ? (
+          <NightPodium
+            name={event.name}
+            standings={detail.standings}
+            onMoments={() => setClosedTab("moments")}
+            onRanks={() => setClosedTab("ranks")}
           />
         ) : tab === "social" ? (
           <SocialPanel detail={detail} me={me.id} />
@@ -491,8 +493,8 @@ export default function CompetitionScreen({
               setPartyCapture({ roundId, prompt });
             }}
           />
-        ) : tab === "recap" ? (
-          <NightRecap detail={detail} />
+        ) : showingMoments ? (
+          <NightRecap detail={detail} onOpenPhoto={setExpanded} />
         ) : tab === "ranks" ? (
           <View style={{ gap: 10 }}>
             {detail.standings.map((person) => (
@@ -501,7 +503,7 @@ export default function CompetitionScreen({
                   style={[
                     s.card,
                     s.row,
-                    person.id === me.id && { borderColor: "#716132" },
+                    person.id === me.id && { borderColor: colors.goldLine },
                   ]}
                 >
                   <Text
@@ -523,13 +525,12 @@ export default function CompetitionScreen({
                     <Text style={s.small}>
                       {person.count} {person.count === 1 ? "beer" : "beers"}
                       {event.mode === "party" && person.challenge_points
-                        ? ` · ${person.challenge_points} challenge pts`
+                        ? ` · ${formatJols(person.challenge_points)} from challenges`
                         : ""}
                     </Text>
                   </View>
                   <Text style={[s.h3, { color: colors.yellow }]}>
-                    {person.points}
-                    <Text style={s.small}> pts</Text>
+                    {formatJols(person.points)}
                   </Text>
                 </View>
               </Entrance>
@@ -570,7 +571,7 @@ export default function CompetitionScreen({
                   accessibilityRole="button"
                   accessibilityLabel={`Open photo from ${photo.user.username}`}
                   onPress={() => setExpanded(photo)}
-                  style={{ aspectRatio: 3 / 4, marginTop: -16 }}
+                  style={{ aspectRatio: 3 / 4 }}
                 >
                   <Image
                     accessibilityLabel={`Drink photo from ${photo.user.username}`}
@@ -604,17 +605,17 @@ export default function CompetitionScreen({
                   >
                     <Text style={{ color: colors.bg, fontWeight: "800" }}>
                       {photo.kind === "challenge"
-                        ? "+2 CHALLENGE"
-                        : `+${photo.beer_count} ${photo.beer_count === 1 ? "BEER" : "BEERS"} · ${photo.beer_points} PTS`}
+                        ? `+${formatJols(2)} · Challenge`
+                        : `${photo.beer_count} ${photo.beer_count === 1 ? "beer" : "beers"} · +${formatJols(photo.beer_points)}`}
                     </Text>
                   </View>
                 </Pressable>
                 <View style={[s.row, { padding: 14 }]}>
-                  {["❤️", "😂", "🔥"].map((emoji) => (
+                  {reactions.map(({ emoji, label, icon }) => (
                     <Pressable
                       key={emoji}
                       accessibilityRole="button"
-                      accessibilityLabel={`React ${emoji}`}
+                      accessibilityLabel={`${label}, ${photo.reactions?.[emoji] ?? 0} reactions`}
                       accessibilityState={{
                         selected: photo.my_reaction === emoji,
                         disabled: !!reacting,
@@ -622,19 +623,30 @@ export default function CompetitionScreen({
                       disabled={!!reacting}
                       onPress={() => void react(photo, emoji)}
                       style={[
-                        s.pill,
+                        s.row,
                         {
-                          padding: 10,
-                          borderWidth: 1,
-                          borderColor:
+                          minHeight: 44,
+                          paddingHorizontal: 11,
+                          gap: 6,
+                          borderRadius: 22,
+                          backgroundColor:
                             photo.my_reaction === emoji
-                              ? colors.yellow
-                              : colors.line,
+                              ? colors.raised
+                              : "transparent",
                         },
                       ]}
                     >
+                      <Icon
+                        name={icon}
+                        size={19}
+                        color={
+                          photo.my_reaction === emoji
+                            ? colors.yellow
+                            : colors.text
+                        }
+                      />
                       <Text style={s.label}>
-                        {emoji} {photo.reactions?.[emoji] ?? 0}
+                        {photo.reactions?.[emoji] ?? 0}
                       </Text>
                     </Pressable>
                   ))}
@@ -667,7 +679,7 @@ export default function CompetitionScreen({
         </Text>
         {!ended && !isBattle && event.host_id === me.id && (
           <Button
-            title="Finish competition"
+            title="Close the night"
             secondary
             loading={busy}
             onPress={finish}
@@ -679,7 +691,8 @@ export default function CompetitionScreen({
         onRequestClose={() => setExpanded(null)}
         animationType="fade"
       >
-        <View style={[s.root, { padding: 24, paddingTop: 64, gap: 18 }]}>
+        <View style={[s.root, { padding: 18, paddingTop: 55, gap: 14 }]}>
+          <NightBackdrop />
           <Button
             title="Close photo"
             secondary
@@ -710,15 +723,16 @@ export default function CompetitionScreen({
       {canCapture && (
         <View
           style={{
-            paddingHorizontal: 24,
-            paddingVertical: 12,
+            paddingHorizontal: 18,
+            paddingVertical: 9,
             borderTopWidth: 1,
             borderTopColor: colors.line,
+            backgroundColor: colors.bg,
           }}
         >
           <Button
             title={pending ? "Finish your saved capture" : "Capture a moment"}
-            icon="camera"
+            icon="camera-outline"
             onPress={() => {
               setActionError("");
               setCamera(true);

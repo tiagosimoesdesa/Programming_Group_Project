@@ -13,7 +13,9 @@ import {
 } from "react-native";
 import { authenticate } from "./api";
 import { colors, ErrorText, Icon, s } from "./ui";
-import LoadingScreen, { Wordmark } from "./LoadingScreen";
+import { BeerGlass, Wordmark } from "./Brand";
+import LoadingScreen from "./LoadingScreen";
+import NightBackdrop from "./NightBackdrop";
 
 export default function AuthScreen({
   onLogin,
@@ -69,6 +71,7 @@ export default function AuthScreen({
       style={s.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <NightBackdrop />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={a.page}
@@ -76,10 +79,11 @@ export default function AuthScreen({
         keyboardDismissMode="on-drag"
       >
         <View style={a.brand}>
+          <BeerGlass height={78} />
           <Wordmark />
         </View>
         <View style={a.form}>
-          <View style={a.tabs}>
+          <View accessibilityRole="tablist" style={a.tabs}>
             {[
               { label: "Log in", create: false },
               { label: "Sign up", create: true },
@@ -214,12 +218,12 @@ export default function AuthScreen({
 const a = StyleSheet.create({
   page: {
     flexGrow: 1,
-    paddingHorizontal: 28,
-    paddingTop: 58,
+    paddingHorizontal: 22,
+    paddingTop: 27,
     paddingBottom: 36,
   },
-  brand: { alignItems: "center", marginBottom: 64 },
-  form: { width: "100%", maxWidth: 390, alignSelf: "center", gap: 23 },
+  brand: { alignItems: "center", gap: 14, marginBottom: 29 },
+  form: { width: "100%", maxWidth: 390, alignSelf: "center", gap: 17 },
   tabs: {
     flexDirection: "row",
     borderBottomWidth: 1,
@@ -247,7 +251,7 @@ const a = StyleSheet.create({
     borderRadius: 13,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#191C17",
+    backgroundColor: colors.card,
   },
   focused: { borderColor: colors.yellow },
   input: {
@@ -283,7 +287,7 @@ const a = StyleSheet.create({
   submit: {
     minHeight: 55,
     padding: 16,
-    borderRadius: 13,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.yellow,

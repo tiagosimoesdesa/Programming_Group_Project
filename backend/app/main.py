@@ -409,9 +409,9 @@ def detail(event_id: str, before: str | None = None, player: str | None = None, 
     photos = list(db.scalars(query.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(21)))
     recap = []
     if effective_ended_at(event):
-        # Independent of feed pagination; deterministic ordering for timestamp ties.
+        # Night moments bookends drink check-ins independently of feed pagination.
         for person, team, count, challenge_points, points in rows:
-            own = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == person.id, visible_submissions(event_id))
+            own = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == person.id, Submission.kind == "drink")
             first = db.scalar(own.order_by(Submission.created_at, Submission.id).limit(1))
             last = db.scalar(own.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(1))
             if first and last and first.id == last.id:

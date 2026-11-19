@@ -8,8 +8,9 @@ import {
   View,
 } from "react-native";
 import { Detail, Photo, request } from "./api";
+import { APP_NAME } from "./Brand";
 import type { components } from "./generated/api";
-import { Button, colors, ErrorText, s } from "./ui";
+import { Button, colors, ErrorText, formatJols, s } from "./ui";
 
 type Social = components["schemas"]["SocialOut"];
 export default function SocialPanel({
@@ -118,7 +119,7 @@ export default function SocialPanel({
                       secondary
                       onPress={() => {
                         Share.share({
-                          message: `Watch “${event.name}” on BEERREAL. Enter spectator code ${data.spectator_code}. This gives access to this night's photos and results.`,
+                          message: `Watch “${event.name}” on ${APP_NAME}. Enter spectator code ${data.spectator_code}. This gives access to this night's photos and results.`,
                         }).catch((e) => setError(e.message));
                       }}
                     />
@@ -148,10 +149,10 @@ export default function SocialPanel({
               <Text style={s.small}>
                 A majority of the other players present when you submit must
                 approve. No self-votes. Votes can change until the host finishes
-                the night; unapproved claims receive no points.
+                the night. Unapproved claims receive no Jols.
               </Text>
               <View style={s.card}>
-                <Text style={s.eyebrow}>CHALLENGE POINTS</Text>
+                <Text style={s.eyebrow}>CHALLENGE JOLS</Text>
                 {[...detail.standings]
                   .sort(
                     (a, b) =>
@@ -161,7 +162,7 @@ export default function SocialPanel({
                     <View key={person.id} style={s.between}>
                       <Text style={s.label}>{person.username}</Text>
                       <Text style={[s.h3, { color: colors.yellow }]}>
-                        {data.scores[person.id] ?? 0}
+                        {formatJols(data.scores[person.id] ?? 0)}
                       </Text>
                     </View>
                   ))}
@@ -287,7 +288,7 @@ export default function SocialPanel({
                     ]}
                   >
                     {claim.status === "approved"
-                      ? "Approved · 1 point"
+                      ? "Approved · 1 Jol"
                       : claim.status === "pending"
                         ? "Awaiting approval"
                         : "Not approved"}{" "}

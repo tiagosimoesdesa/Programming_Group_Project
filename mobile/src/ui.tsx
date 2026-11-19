@@ -1,30 +1,36 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   ActivityIndicator,
   Animated,
   Image,
   Pressable,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
   TextInputProps,
   View,
+  ViewStyle,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Profile } from "./api";
+import { nativeAnimationDriver, useMotionAllowed } from "./motion";
 
 export const colors = {
-  bg: "#101110",
-  card: "#1D1F1B",
-  raised: "#282B25",
-  yellow: "#F5CB45",
-  text: "#F5F5ED",
-  muted: "#A5AA9C",
-  line: "#34382E",
-  green: "#BEDEA6",
+  bg: "#0B0907",
+  card: "#17130F",
+  raised: "#231C16",
+  yellow: "#FFC43A",
+  text: "#FAF3E7",
+  muted: "#C1B4A5",
+  line: "#544537",
+  goldLine: "#946A26",
+  green: "#CBDDAA",
   red: "#FFB6A8",
 };
+export function formatJols(score: number) {
+  return `${score} ${score === 1 ? "Jol" : "Jols"}`;
+}
 export function Icon({
   name,
   size = 22,
@@ -43,6 +49,8 @@ export function Button({
   loading,
   disabled,
   icon,
+  compact,
+  style,
 }: {
   title: string;
   onPress: () => void;
@@ -50,6 +58,8 @@ export function Button({
   loading?: boolean;
   disabled?: boolean;
   icon?: React.ComponentProps<typeof Icon>["name"];
+  compact?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
   return (
     <Pressable
@@ -60,6 +70,13 @@ export function Button({
       style={({ pressed }) => [
         s.button,
         secondary && s.secondary,
+        compact && {
+          minHeight: 48,
+          paddingHorizontal: 9,
+          paddingVertical: 9,
+          gap: 6,
+        },
+        style,
         (disabled || loading) && { opacity: 0.5 },
         pressed && { opacity: 0.8 },
       ]}
@@ -69,9 +86,19 @@ export function Button({
       ) : (
         <>
           {icon && (
-            <Icon name={icon} color={secondary ? colors.text : colors.bg} />
+            <Icon
+              name={icon}
+              size={compact ? 18 : 22}
+              color={secondary ? colors.text : colors.bg}
+            />
           )}
-          <Text style={[s.buttonText, secondary && { color: colors.text }]}>
+          <Text
+            style={[
+              s.buttonText,
+              compact && { fontSize: 13 },
+              secondary && { color: colors.text },
+            ]}
+          >
             {title}
           </Text>
         </>
@@ -85,7 +112,7 @@ export function Input({ label, ...props }: TextInputProps & { label: string }) {
       <Text style={s.label}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
-        placeholderTextColor="#818777"
+        placeholderTextColor={colors.muted}
         selectionColor={colors.yellow}
         {...props}
         style={[s.input, props.style]}
@@ -96,14 +123,19 @@ export function Input({ label, ...props }: TextInputProps & { label: string }) {
 export function Avatar({
   user,
   size = 44,
+  fallback = true,
 }: {
   user: Pick<Profile, "username" | "avatar_url">;
   size?: number;
+  fallback?: boolean;
 }) {
-  return user.avatar_url ? (
+  const [unavailable, setUnavailable] = useState<string | null>(null);
+  const uri = user.avatar_url;
+  return uri && unavailable !== uri ? (
     <Image
-      source={{ uri: user.avatar_url }}
+      source={{ uri }}
       accessibilityLabel={`${user.username}'s avatar`}
+      onError={() => setUnavailable(uri)}
       style={{
         width: size,
         height: size,
@@ -111,7 +143,7 @@ export function Avatar({
         backgroundColor: colors.raised,
       }}
     />
-  ) : (
+  ) : fallback ? (
     <View
       style={{
         width: size,
@@ -124,17 +156,9 @@ export function Avatar({
         borderColor: colors.line,
       }}
     >
-      <Text
-        style={{
-          color: colors.yellow,
-          fontSize: size * 0.36,
-          fontWeight: "800",
-        }}
-      >
-        {user.username.slice(0, 2).toUpperCase()}
-      </Text>
+      <Icon name="person-outline" size={size * 0.5} color={colors.muted} />
     </View>
-  );
+  ) : null;
 }
 export function ErrorText({ message }: { message: string }) {
   return message ? (
@@ -171,27 +195,21 @@ export function Entrance({
   trigger?: unknown;
 }) {
   const value = useRef(new Animated.Value(1)).current;
-  const [reduce, setReduce] = useState(true);
+  const motionAllowed = useMotionAllowed();
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduce);
-    const sub = AccessibilityInfo.addEventListener(
-      "reduceMotionChanged",
-      setReduce,
-    );
-    return () => sub.remove();
-  }, []);
-  useEffect(() => {
-    if (reduce) {
+    if (!motionAllowed) {
       value.setValue(1);
       return;
     }
     value.setValue(0);
-    Animated.timing(value, {
+    const entrance = Animated.timing(value, {
       toValue: 1,
       duration: 350,
-      useNativeDriver: true,
-    }).start();
-  }, [trigger, reduce, value]);
+      useNativeDriver: nativeAnimationDriver,
+    });
+    entrance.start();
+    return () => entrance.stop();
+  }, [trigger, motionAllowed, value]);
   return (
     <Animated.View
       style={{
@@ -212,7 +230,7 @@ export function Entrance({
 }
 export const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 24, paddingBottom: 32, gap: 24 },
+  content: { padding: 18, paddingBottom: 24, gap: 18 },
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
   between: {
     flexDirection: "row",
@@ -222,7 +240,7 @@ export const s = StyleSheet.create({
   },
   brand: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
     letterSpacing: -1.2,
   },
@@ -234,8 +252,8 @@ export const s = StyleSheet.create({
   },
   h1: {
     color: colors.text,
-    fontSize: 40,
-    lineHeight: 44,
+    fontSize: 36,
+    lineHeight: 40,
     fontWeight: "900",
     letterSpacing: -1.7,
   },
@@ -253,14 +271,20 @@ export const s = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderRadius: 17,
+    borderRadius: 28,
     backgroundColor: colors.yellow,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 9,
   },
-  buttonText: { color: colors.bg, fontSize: 15, fontWeight: "800" },
+  buttonText: {
+    flexShrink: 1,
+    textAlign: "center",
+    color: colors.bg,
+    fontSize: 15,
+    fontWeight: "800",
+  },
   secondary: {
     backgroundColor: colors.raised,
     borderWidth: 1,
@@ -288,10 +312,10 @@ export const s = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 11,
     paddingVertical: 6,
-    backgroundColor: "#30351F",
+    backgroundColor: colors.raised,
   },
   pillText: {
-    color: colors.green,
+    color: colors.yellow,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
@@ -301,7 +325,7 @@ export const s = StyleSheet.create({
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 15,
+    borderRadius: 22,
     backgroundColor: colors.card,
   },
   divider: { height: 1, backgroundColor: colors.line },
@@ -318,25 +342,42 @@ export const s = StyleSheet.create({
     gap: 13,
     borderWidth: 1,
     borderColor: colors.line,
-    borderStyle: "dashed",
     borderRadius: 24,
   },
   tabs: {
     flexDirection: "row",
-    padding: 5,
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
   },
-  tab: { flex: 1, padding: 12, alignItems: "center", borderRadius: 12 },
-  activeTab: { backgroundColor: colors.raised },
+  tab: {
+    flex: 1,
+    minHeight: 44,
+    paddingVertical: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  activeTab: { borderBottomColor: colors.yellow },
   bottom: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    backgroundColor: colors.bg,
+    marginHorizontal: "5%",
+    marginTop: 5,
+    marginBottom: 7,
+    padding: 4,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 40,
+    backgroundColor: colors.raised,
   },
-  nav: { alignItems: "center", gap: 4, paddingHorizontal: 26, minHeight: 44 },
+  nav: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    borderRadius: 36,
+    minHeight: 49,
+    paddingVertical: 4,
+  },
 });

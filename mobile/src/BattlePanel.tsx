@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import type { Detail, Profile } from "./api";
 import { post, request } from "./api";
 import { showAlert } from "./confirm";
-import { Avatar, Button, colors, Icon, s } from "./ui";
+import { Avatar, Button, colors, formatJols, Icon, s } from "./ui";
 
 function timeLeft(seconds: number) {
   const safe = Math.max(0, seconds);
@@ -113,8 +113,8 @@ export default function BattlePanel({
           <View style={s.pill}>
             <Text style={s.pillText}>
               {battle.points_visible
-                ? "POINTS SHOWN LIVE"
-                : "POINTS HIDDEN UNTIL THE END"}
+                ? "JOLS SHOWN LIVE"
+                : "JOLS HIDDEN UNTIL THE END"}
             </Text>
           </View>
         </View>
@@ -183,7 +183,7 @@ export default function BattlePanel({
                 </Text>
               </View>
               <Text style={[s.h2, { color: colors.yellow }]}>
-                {team.score === null ? "Hidden" : `${team.score} pts`}
+                {team.score === null ? "Hidden" : formatJols(team.score)}
               </Text>
             </View>
             {team.members.length ? (
@@ -206,9 +206,9 @@ export default function BattlePanel({
                     {member.id === me.id ? " (you)" : ""}
                   </Text>
                   <Text style={s.label}>
-                    {member.points === null
+                    {member.points == null
                       ? "—"
-                      : `${member.points} pts · ${member.count} ${member.count === 1 ? "beer" : "beers"}`}
+                      : `${formatJols(member.points)} · ${member.count} ${member.count === 1 ? "beer" : "beers"}`}
                   </Text>
                 </View>
               ))

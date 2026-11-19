@@ -3,7 +3,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { View } from "react-native";
 import App from "./App";
 import AuthScreen from "./src/AuthScreen";
+import { APP_NAME } from "./src/Brand";
 import LoadingScreen from "./src/LoadingScreen";
+import { colors } from "./src/ui";
 
 type Screen = "welcome" | "login" | "register" | "app";
 const screens: {
@@ -54,7 +56,7 @@ function ScreenPreview({
   if (screen === "welcome") return <LoadingScreen />;
   return (
     <SafeAreaProvider style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: "#101110" }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <AuthScreen
           initialScreen={screen}
           onLogin={async () => setNotice(true)}
@@ -75,8 +77,8 @@ function ScreenPreview({
               left: 16,
               right: 16,
               padding: 16,
-              background: "#c5b6ff",
-              color: "#151612",
+              background: colors.yellow,
+              color: colors.bg,
               borderRadius: 14,
               font: "600 13px system-ui",
               boxShadow: "0 6px 24px #0008",
@@ -113,8 +115,8 @@ function DesktopPreview() {
   }, []);
   useEffect(() => {
     document.title = embedded
-      ? "BEERREAL · Phone preview"
-      : "BEERREAL · Design studio";
+      ? `${APP_NAME} · Phone preview`
+      : `${APP_NAME} · Design studio`;
   }, [embedded]);
   if (embedded)
     return screen === "app" ? (
@@ -139,7 +141,7 @@ function DesktopPreview() {
       <style>{css}</style>
       <header className="studio-header">
         <div className="studio-brand">
-          BEER<span>REAL.</span>
+          COUNT THE <span>JOLS</span>
           <b>DESIGN STUDIO</b>
         </div>
         <div className="studio-live">
@@ -256,7 +258,7 @@ function DesktopPreview() {
               </div>
               <iframe
                 key={`${screen}-${refreshKey}-${error}`}
-                title={`BEERREAL ${screen} mobile preview`}
+                title={`${APP_NAME} ${screen} mobile preview`}
                 src={`/?preview=phone&screen=${screen}&error=${error ? "1" : "0"}`}
                 allow="camera; microphone; clipboard-write"
                 style={{ width: model.width, height: model.height - 54 }}
@@ -284,5 +286,5 @@ export default function WebEntry() {
 }
 
 const css = `
-html,body,#root{height:100%;margin:0}*{box-sizing:border-box}.studio{height:100%;overflow:auto;background:#171916;color:#f4f0e5;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}.studio button,.studio select{font:inherit}.studio button{cursor:pointer}.studio button:focus-visible,.studio select:focus-visible{outline:2px solid #f5cb45;outline-offset:4px}.studio-header{height:76px;padding:0 32px;border-bottom:1px solid #30332b;display:flex;align-items:center;justify-content:space-between;gap:20px}.studio-brand{font-size:24px;font-weight:900;letter-spacing:-1px}.studio-brand>span{color:#f5cb45}.studio-brand b{font-size:10px;letter-spacing:2px;color:#a7ad9c;margin-left:25px;font-weight:600}.studio-live{font-size:12px;color:#adb39f;display:flex;gap:9px;align-items:center}.studio-live i{width:7px;height:7px;border-radius:50%;background:#b9d496}.studio-layout{display:flex;min-height:calc(100% - 76px)}.studio-sidebar{width:320px;flex-shrink:0;padding:32px 26px;border-right:1px solid #30332b}.studio-kicker{font-size:10px;letter-spacing:2px;color:#c5b6ff;font-weight:700}.studio h1{font-size:30px;line-height:1.15;letter-spacing:-1.2px;margin:14px 0}.studio h1 span{color:#f5cb45}.studio-description{font-size:13px;line-height:1.7;color:#a7ad9c;margin-bottom:27px}.studio-label{display:block;font-size:10px;letter-spacing:1.8px;color:#a7ad9c;margin:22px 0 11px;font-weight:700}.screen-link{width:100%;border:1px solid transparent;border-radius:13px;padding:12px;display:flex;text-align:left;align-items:center;gap:13px;background:transparent;color:#f4f0e5;margin-bottom:5px}.screen-link:hover{background:#22261e}.screen-link.selected{border-color:#605631;background:#302d1d}.screen-number{font-size:12px;color:#a1a68f}.selected .screen-number{color:#f5cb45}.screen-link strong{display:block;font-size:13px}.screen-link small{display:block;color:#a7ad9c;font-size:11px;margin-top:5px}.screen-arrow{margin-left:auto;color:#f5cb45}.studio select{width:100%;padding:12px;border:1px solid #414535;border-radius:10px;color:#f4f0e5;background:#20231d;font-size:12px}.studio-options{display:grid;gap:12px;margin:18px 0;font-size:12px;color:#bfc4b5}.studio-options label{display:flex;gap:8px;align-items:center}.studio input{accent-color:#f5cb45}.studio-reset{width:100%;background:#f5cb45;border:0;border-radius:11px;padding:12px;color:#171916;font-size:13px;font-weight:700!important}.studio-note{border-top:1px solid #30332b;margin-top:25px;padding-top:20px;font-size:11px;color:#a7ad9c;line-height:1.7}.studio-note strong{color:#c5b6ff;font-weight:600}.studio-note p{margin-bottom:0}.studio-stage{flex:1;min-width:0;display:flex;align-items:center;flex-direction:column;padding:20px 28px 24px;background:radial-gradient(ellipse at center,#30352644 0,transparent 65%),radial-gradient(#ffffff0c 1px,transparent 1px);background-size:auto,20px 20px}.stage-heading{display:flex;justify-content:space-between;width:100%;font-size:11px;color:#b0b5a5;margin-bottom:20px}.stage-heading span:first-child{font-size:12px;color:#f4f0e5;font-weight:600}.phone-space{flex-shrink:0;position:relative}.phone-shell{box-sizing:content-box;transform-origin:top left;border:10px solid #090a08;border-radius:48px;background:#101110;box-shadow:0 0 0 2px #45483d,0 24px 80px #0009;overflow:hidden}.phone-status{height:38px;display:flex;justify-content:space-between;align-items:center;padding:0 25px;position:relative;font-size:12px;font-weight:700;color:#f5f5ed}.phone-island{width:92px;height:23px;background:#030403;border-radius:30px;position:absolute;left:50%;transform:translateX(-50%);top:6px}.phone-shell iframe{display:block;border:0;background:#101110}.phone-home{height:16px;display:flex;align-items:center;justify-content:center}.phone-home span{width:108px;height:4px;border-radius:9px;background:#f4f0e5}.stage-caption{font-size:11px;color:#949c87;margin:18px 0 0;text-align:center;line-height:1.5}@media(max-width:900px){.studio-layout{flex-direction:column}.studio-sidebar{width:100%;border-right:0;border-bottom:1px solid #30332b;padding:20px}.studio-sidebar h1,.studio-description,.studio-kicker,.studio-note{display:none}.studio-sidebar nav{display:flex;flex-wrap:wrap;gap:6px}.screen-link{width:auto;flex:1;min-width:130px}.screen-link small,.screen-arrow{display:none}.studio-options{display:inline-flex;margin-right:20px}.studio-reset{width:auto}.studio-header{padding:0 20px}.studio-brand b,.studio-live{display:none}}
+html,body,#root{height:100%;margin:0}*{box-sizing:border-box}.studio{height:100%;overflow:auto;background:#17130f;color:#f4f0e5;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}.studio button,.studio select{font:inherit}.studio button{cursor:pointer}.studio button:focus-visible,.studio select:focus-visible{outline:2px solid #ffc43a;outline-offset:4px}.studio-header{height:76px;padding:0 32px;border-bottom:1px solid #382d22;display:flex;align-items:center;justify-content:space-between;gap:20px}.studio-brand{font-size:24px;font-weight:900;letter-spacing:-1px}.studio-brand>span{color:#ffc43a}.studio-brand b{font-size:10px;letter-spacing:2px;color:#c1b4a5;margin-left:25px;font-weight:600}.studio-live{font-size:12px;color:#c1b4a5;display:flex;gap:9px;align-items:center}.studio-live i{width:7px;height:7px;border-radius:50%;background:#b9d496}.studio-layout{display:flex;min-height:calc(100% - 76px)}.studio-sidebar{width:320px;flex-shrink:0;padding:32px 26px;border-right:1px solid #382d22}.studio-kicker{font-size:10px;letter-spacing:2px;color:#ffc43a;font-weight:700}.studio h1{font-size:30px;line-height:1.15;letter-spacing:-1.2px;margin:14px 0}.studio h1 span{color:#ffc43a}.studio-description{font-size:13px;line-height:1.7;color:#c1b4a5;margin-bottom:27px}.studio-label{display:block;font-size:10px;letter-spacing:1.8px;color:#c1b4a5;margin:22px 0 11px;font-weight:700}.screen-link{width:100%;border:1px solid transparent;border-radius:13px;padding:12px;display:flex;text-align:left;align-items:center;gap:13px;background:transparent;color:#f4f0e5;margin-bottom:5px}.screen-link:hover{background:#231c16}.screen-link.selected{border-color:#946a26;background:#322610}.screen-number{font-size:12px;color:#b9a996}.selected .screen-number{color:#ffc43a}.screen-link strong{display:block;font-size:13px}.screen-link small{display:block;color:#c1b4a5;font-size:11px;margin-top:5px}.screen-arrow{margin-left:auto;color:#ffc43a}.studio select{width:100%;padding:12px;border:1px solid #544537;border-radius:10px;color:#f4f0e5;background:#231c16;font-size:12px}.studio-options{display:grid;gap:12px;margin:18px 0;font-size:12px;color:#c1b4a5}.studio-options label{display:flex;gap:8px;align-items:center}.studio input{accent-color:#ffc43a}.studio-reset{width:100%;background:#ffc43a;border:0;border-radius:11px;padding:12px;color:#17130f;font-size:13px;font-weight:700!important}.studio-note{border-top:1px solid #382d22;margin-top:25px;padding-top:20px;font-size:11px;color:#c1b4a5;line-height:1.7}.studio-note strong{color:#ffc43a;font-weight:600}.studio-note p{margin-bottom:0}.studio-stage{flex:1;min-width:0;display:flex;align-items:center;flex-direction:column;padding:20px 28px 24px;background:radial-gradient(ellipse at center,#52320f55 0,transparent 65%),radial-gradient(#ffffff0c 1px,transparent 1px);background-size:auto,20px 20px}.stage-heading{display:flex;justify-content:space-between;width:100%;font-size:11px;color:#c1b4a5;margin-bottom:20px}.stage-heading span:first-child{font-size:12px;color:#f4f0e5;font-weight:600}.phone-space{flex-shrink:0;position:relative}.phone-shell{box-sizing:content-box;transform-origin:top left;border:10px solid #0b0907;border-radius:48px;background:#0b0907;box-shadow:0 0 0 2px #544537,0 24px 80px #0009;overflow:hidden}.phone-status{height:38px;display:flex;justify-content:space-between;align-items:center;padding:0 25px;position:relative;font-size:12px;font-weight:700;color:#f5f5ed}.phone-island{width:92px;height:23px;background:#050403;border-radius:30px;position:absolute;left:50%;transform:translateX(-50%);top:6px}.phone-shell iframe{display:block;border:0;background:#0b0907}.phone-home{height:16px;display:flex;align-items:center;justify-content:center}.phone-home span{width:108px;height:4px;border-radius:9px;background:#f4f0e5}.stage-caption{font-size:11px;color:#ad9e8a;margin:18px 0 0;text-align:center;line-height:1.5}@media(max-width:900px){.studio-layout{flex-direction:column}.studio-sidebar{width:100%;border-right:0;border-bottom:1px solid #382d22;padding:20px}.studio-sidebar h1,.studio-description,.studio-kicker,.studio-note{display:none}.studio-sidebar nav{display:flex;flex-wrap:wrap;gap:6px}.screen-link{width:auto;flex:1;min-width:130px}.screen-link small,.screen-arrow{display:none}.studio-options{display:inline-flex;margin-right:20px}.studio-reset{width:auto}.studio-header{padding:0 20px}.studio-brand b,.studio-live{display:none}}
 `;

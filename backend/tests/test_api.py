@@ -15,6 +15,8 @@ from app.main import app
 from app.models import Competition, PartyRound, Submission
 from app.security import encode
 
+WEB_ORIGIN = "http://localhost:8082"
+
 
 def account(client, name="alex"):
     response = client.post("/auth/register", json={"username": name, "password": "strong-password-123", "legal_age": True})
@@ -64,6 +66,53 @@ def test_refresh_rotation_and_logout(client):
     assert client.post("/auth/refresh", json={"refresh_token": new_token}).status_code == 401
     expired = encode("missing-user", "access", -10)
     assert client.get("/me", headers={"Authorization": f"Bearer {expired}"}).status_code == 401
+
+
+def test_web_session_cookie_rotation_and_logout(client):
+    registration = client.post(
+        "/auth/web/register",
+        headers={"Origin": WEB_ORIGIN},
+        json={"username": "web_user", "password": "strong-password-123", "legal_age": True},
+    )
+    assert registration.status_code == 201, registration.text
+    assert set(registration.json()) == {"access_token"}
+    cookie_header = registration.headers["set-cookie"]
+    assert "beerreal_refresh=" in cookie_header
+    assert "HttpOnly" in cookie_header
+    assert "SameSite=lax" in cookie_header
+    assert "Max-Age=2592000" in cookie_header
+    first_refresh = registration.cookies["beerreal_refresh"]
+
+    refreshed = client.post("/auth/web/refresh", headers={"Origin": WEB_ORIGIN})
+    assert refreshed.status_code == 200, refreshed.text
+    assert set(refreshed.json()) == {"access_token"}
+    assert refreshed.cookies["beerreal_refresh"] != first_refresh
+
+    client.cookies.set("beerreal_refresh", first_refresh)
+    reused = client.post("/auth/web/refresh", headers={"Origin": WEB_ORIGIN})
+    assert reused.status_code == 401
+    assert "Max-Age=0" in reused.headers["set-cookie"]
+
+    login = client.post(
+        "/auth/web/login",
+        headers={"Origin": WEB_ORIGIN},
+        json={"username": "web_user", "password": "strong-password-123"},
+    )
+    assert login.status_code == 200, login.text
+    assert client.post("/auth/web/logout", headers={"Origin": WEB_ORIGIN}).status_code == 204
+    assert client.post("/auth/web/refresh", headers={"Origin": WEB_ORIGIN}).status_code == 401
+
+
+def test_web_session_rejects_untrusted_origins_and_uses_secure_cookie(client, monkeypatch):
+    credentials = {"username": "alex", "password": "strong-password-123"}
+    account(client)
+    assert client.post("/auth/web/login", json=credentials).status_code == 403
+    assert client.post("/auth/web/login", headers={"Origin": "https://evil.example"}, json=credentials).status_code == 403
+
+    monkeypatch.setattr("app.main.settings.public_url", "https://beerreal-api.onrender.com")
+    trusted = client.post("/auth/web/login", headers={"Origin": WEB_ORIGIN}, json=credentials)
+    assert trusted.status_code == 200, trusted.text
+    assert "Secure" in trusted.headers["set-cookie"]
 
 
 def test_throttle(client):

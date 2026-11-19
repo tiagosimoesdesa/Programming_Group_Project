@@ -35,7 +35,11 @@ def validate_image(upload: UploadFile) -> bytes:
 
 
 def headers():
-    return {"Authorization": f"Bearer {settings.supabase_service_key}", "apikey": settings.supabase_service_key}
+    key = settings.supabase_admin_key
+    result = {"apikey": key}
+    if not key.startswith("sb_secret_"):
+        result["Authorization"] = f"Bearer {key}"
+    return result
 
 
 def local_path(key):

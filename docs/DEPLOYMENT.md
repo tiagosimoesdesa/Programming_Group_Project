@@ -6,13 +6,13 @@ The production setup has three parts:
 - **Render Web Service** runs the Python/FastAPI API.
 - **Render Static Site** serves the Expo web application over HTTPS.
 
-Keep every database password and service key in the provider dashboards. Never paste secrets into this repository, the mobile environment, screenshots, issues, or pull requests.
+Keep every database password and secret key in the provider dashboards. Never paste secrets into this repository, the mobile environment, screenshots, issues, or pull requests.
 
 ## Supabase
 
 1. Create a dedicated free Supabase project.
 2. Create a **private** Storage bucket called `beerreal`, with a 5 MB upload limit and `image/jpeg` allowed. The backend re-encodes images and strips metadata.
-3. In **Project Settings > Data API**, copy the project URL. In **API Keys**, create or copy a backend secret/service-role key. Keep both in Render; never put the secret key in the frontend.
+3. In **Project Settings > Data API**, copy the project URL. In **API Keys**, create a backend secret key named `render_backend`; its value starts with `sb_secret_`. Keep it in Render and never put it in the frontend. The legacy JWT-based `service_role` key remains supported temporarily through `SUPABASE_SERVICE_KEY`, but new deployments use `SUPABASE_SECRET_KEY`.
 4. In **Connect**, copy the PostgreSQL **session pooler** URL. Change its prefix to `postgresql+psycopg://`. URL-encode special characters in the password and add `sslmode=require` to the connection query parameters.
 5. Migrations enable row-level security without client policies on application tables. The trusted backend database role must own those tables or have the required privileged access. Mobile clients only access FastAPI.
 
@@ -30,7 +30,7 @@ Signed photo links are temporary bearer links; recipients can use them until the
 | --- | --- |
 | `DATABASE_URL` | Supabase session-pooler URL beginning `postgresql+psycopg://` and ending with `sslmode=require` |
 | `SUPABASE_URL` | Supabase project URL, such as `https://PROJECT.supabase.co` |
-| `SUPABASE_SERVICE_KEY` | Backend-only Supabase secret/service-role key |
+| `SUPABASE_SECRET_KEY` | Backend-only Supabase key beginning with `sb_secret_` |
 | `PUBLIC_URL` | Final API URL, such as `https://beerreal-api.onrender.com` |
 | `CORS_ORIGINS` | JSON list containing the final frontend origin, such as `["https://beerreal-web.onrender.com"]` |
 
@@ -58,7 +58,7 @@ The Render command trusts proxy headers because Render is the ingress. On other 
 
 ## Operational follow-up
 
-- Do not log passwords, tokens, private photo URLs, or service keys.
+- Do not log passwords, tokens, private photo URLs, or secret keys.
 - Define photo retention and protect provider accounts/backups before public use.
 - Partial uploads are cleaned up best-effort; process termination/storage outages can leave orphaned files. Audit storage against database references before deleting anything.
 - Periodically prune expired refresh sessions and stale login-attempt records during production hardening.

@@ -27,7 +27,7 @@
 - Never commit or paste real credentials, tokens, connection strings, passwords, `.env` files, databases, private photo URLs, or user data. Use ignored local environment files and provider dashboards; document only placeholder names in `.env.example` files.
 - Tests must use local or disposable databases, never the production Supabase project.
 - Record every database structure change in a new Alembic migration. Do not edit a migration that teammates may already have applied.
-- Keep the Supabase service key on the Python backend only. Never expose it to the mobile/web bundle.
+- Keep the Supabase secret key on the Python backend only. Never expose it to the mobile/web bundle. Use `SUPABASE_SECRET_KEY` for current `sb_secret_...` keys; `SUPABASE_SERVICE_KEY` exists only for migration from the legacy JWT key.
 - If Supabase tools are connected, use project-scoped read-only access by default. Do not change or delete production tables or rows unless the task explicitly requires it and the user approves the exact action.
 
 ## Review and delivery

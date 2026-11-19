@@ -406,6 +406,9 @@ def test_party_mode_rounds_attempts_and_combined_score(client, monkeypatch):
     assert response.status_code == 201, response.text
     attempt = response.json()["attempts"][0]
     assert attempt["status"] == "pending" and attempt["required"] == 1
+    assert not client.get(path + "/social", headers=guest).json()["claims"]
+    legacy_vote = client.put(path + f"/claims/{attempt['id']}/vote", headers=guest, json={"approve": True})
+    assert legacy_vote.status_code == 404
     before_vote = client.get(path, headers=host).json()
     assert before_vote["standings"][0]["points"] == 0 and before_vote["feed"] == []
     approved = client.put(path + f"/party/attempts/{attempt['id']}/vote", headers=guest, json={"approve": True}).json()
@@ -571,13 +574,15 @@ def test_private_battle_hides_opponent_until_timer_ends(client, monkeypatch):
     main_module = importlib.import_module("app.main")
     host, _ = account(client)
     guest, _ = account(client, "private_guest")
+    fellow, _ = account(client, "private_fellow")
     battle = create_battle(client, host, visible=False)
     path = f"/competitions/{battle['id']}"
-    client.post("/competitions/join", headers=guest, json={"code": battle["code"]})
+    for player in (guest, fellow):
+        assert client.post("/competitions/join", headers=player, json={"code": battle["code"]}).status_code == 200
+        assert choose_team(client, player, battle["id"], "b").status_code == 200
     assert client.get(path + "/social", headers=host).status_code == 409
     assert client.post(path + "/social/enable", headers=host).status_code == 409
     choose_team(client, host, battle["id"], "a")
-    choose_team(client, guest, battle["id"], "b")
     started_at = int(time.time())
     monkeypatch.setattr(main_module.time, "time", lambda: started_at)
     client.post(path + "/battle/start", headers=host)
@@ -590,7 +595,15 @@ def test_private_battle_hides_opponent_until_timer_ends(client, monkeypatch):
     teams = {team["key"]: team for team in host_view["battle"]["teams"]}
     assert teams["a"]["score"] == 3
     assert teams["b"]["score"] is None
-    assert teams["b"]["members"][0]["points"] is None
+    opponents = teams["b"]["members"]
+    assert [member["username"] for member in opponents] == ["private_fellow", "private_guest"]
+    assert all(
+        member["count"] is None and member["points"] is None and member["rank"] is None
+        for member in opponents
+    )
+    own_team = client.get(path + "/battle", headers=guest).json()["teams"][1]
+    ranked_members = [("private_guest", 1), ("private_fellow", 2)]
+    assert [(member["username"], member["rank"]) for member in own_team["members"]] == ranked_members
     assert client.put(path + f"/photos/{guest_photo['id']}/reaction", headers=host, json={"emoji": "🔥"}).status_code == 404
 
     monkeypatch.setattr(main_module.time, "time", lambda: started_at + 540)
@@ -601,7 +614,9 @@ def test_private_battle_hides_opponent_until_timer_ends(client, monkeypatch):
     assert final["competition"]["ended_at"] == started_at + 600
     assert final["battle"]["status"] == "complete" and final["battle"]["winner"] == "a"
     assert {photo["id"] for photo in final["feed"]} == {host_photo["id"], guest_photo["id"]}
-    assert {row["username"] for row in final["standings"]} == {"alex", "private_guest"}
+    assert {row["username"] for row in final["standings"]} == {"alex", "private_guest", "private_fellow"}
+    final_opponents = final["battle"]["teams"][1]["members"]
+    assert [(member["username"], member["rank"]) for member in final_opponents] == ranked_members
     assert submit(client, host, battle["id"]).status_code == 409
 
 

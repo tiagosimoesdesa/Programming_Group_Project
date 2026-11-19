@@ -22,6 +22,12 @@ Check-ins are trust-based. Players confirm how many beers are visible in each ac
 
 ## Requirements
 
+The teaching staff approved the project's Python/FastAPI backend with a React Native/TypeScript frontend because BEERREAL requires a camera-first mobile interface and real-time multi-user interaction. Keep this architecture consistent unless the team and teaching staff agree to change it.
+
+For local development, install Node.js 24 LTS or newer (including npm), Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/). Native testing uses Expo Go compatible with SDK 58. Local phone testing requires the computer and phones to reach each other on the same private network; the production deployment uses public HTTPS URLs instead.
+
+The [course project checklist](docs/COURSE_CHECKLIST.md) tracks submission, grading, deployment, security, device-testing, and presentation readiness. Before submission, this README must also include the final public application URL and every member's full name and student number.
+
 ## Desktop design preview
 
 Run `./start-preview.ps1` from the project folder, then open http://localhost:8082. The desktop studio displays the actual mobile components inside a resizable phone frame with welcome, login, and registration shortcuts. UI edits update automatically. You can switch device sizes, reset a screen, and simulate a form error without creating accounts.
@@ -30,7 +36,7 @@ Choose **Live app** to use the real backend (start `./start-backend.ps1` too). B
 
 If dependencies and local environment files are already configured, run `./start-backend.ps1` and `./start-mobile.ps1` in two PowerShell terminals from this folder. These launchers use the installed project dependencies without requiring npm/uv on the launch path (Node itself must be available).
 
-Install Node.js 24 LTS or newer (including npm), Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/). Connect both phones and your PC to the same private Wi-Fi.
+Connect both phones and your PC to the same private Wi-Fi for local native testing.
 
 Use Expo Go compatible with SDK 58 from the App Store or Google Play. See the [Expo download page](https://expo.dev/go) for compatible builds. Later iPhone distribution through EAS cloud builds requires Apple developer enrollment.
 

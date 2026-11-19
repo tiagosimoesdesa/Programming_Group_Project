@@ -43,7 +43,7 @@ Signed photo links are temporary bearer links; recipients can use them until the
 4. If Render assigns a suffixed hostname, replace the example hostnames with the exact URLs shown in the Render dashboard and redeploy both services.
 5. The API build installs locked Python dependencies; startup applies migrations and launches Uvicorn. The frontend build exports the Expo web bundle to `dist` and serves it over HTTPS.
 6. Open `https://YOUR-API.onrender.com/health`; it must return `{"status":"ok"}`.
-7. Open the frontend URL. Production builds open the live application directly; append `?studio=1` only when you want the desktop design preview. Test registration, login, creating and joining both game modes, photo access, voting, standings, and persistence after an API restart.
+7. Open the frontend URL. Production builds open the live application directly; append `?studio=1` only when you want the desktop design preview. Test registration, login, creating and joining Classic, Party, and Battle games, photo access, voting, standings, and persistence after an API restart.
 8. For native Expo Go testing over the internet, set `EXPO_PUBLIC_API_URL` in the local `mobile/.env` to the Render API URL and restart Expo. The phone no longer needs to share Wi-Fi with the development computer, but it still needs internet access.
 
 Render only prompts for `sync: false` variables when a Blueprint first creates a service. For an existing service, add or update them under **Environment** in the Render dashboard.

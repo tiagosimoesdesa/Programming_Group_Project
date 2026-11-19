@@ -2,6 +2,15 @@
 
 Automated checks were run on Windows during implementation. Physical-device checks remain in `DEVICE_TESTS.md`.
 
+## Beer points and Battle mode — 19 November 2026
+
+- Updated local `main` through commit `1290ba4`, including independent beer points and the timed team Battle mode.
+- Alembic upgrades through revision `0007` apply locally and report `0007` as head.
+- The backend suite passes 31 tests when pytest uses a writable project-local temporary directory. The default sandbox temporary directory produced a Windows permission error after 31 successful tests; this was an environment issue, not an application assertion failure.
+- Strict TypeScript checking passes with the generated Battle API client.
+- Local `/health` and the authenticated Expo manifest both return HTTP 200 using the current LAN address.
+- Physical two-phone Classic, Party, and Battle workflows, camera permissions, simultaneous actions, hidden Battle results, and final reveal layouts remain to be completed.
+
 ## Classic and Party modes — 18 November 2026
 
 - Added host-selected Classic and Party modes, with the selection required before the invitation code is generated.

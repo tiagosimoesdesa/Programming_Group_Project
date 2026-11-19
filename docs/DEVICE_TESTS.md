@@ -7,6 +7,7 @@ These checks require the user's Android and iPhone. Automated tests cannot certi
 - [ ] Both phones open `/health` and run the project in SDK-compatible Expo Go.
 - [ ] Screens respect safe areas and large fonts; forms remain usable with the keyboard open.
 - [ ] Register requires legal-age self-attestation; duplicate usernames and wrong passwords show errors.
+- [ ] On the deployed web app, register or log in, reload and close/reopen the page, and confirm the session restores; then log out and confirm it does not return.
 - [ ] Session restoration and sign-out work; temporary network failures do not erase valid sessions.
 - [ ] Profile-photo selection works; denied photo permission shows useful guidance.
 

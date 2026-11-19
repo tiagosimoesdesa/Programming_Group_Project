@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { BASE, Detail, liveToken, request } from "./api";
 
 export function useCompetition(id: string, player?: string) {
@@ -69,8 +69,12 @@ export function useCompetition(id: string, player?: string) {
       try {
         const token = await liveToken();
         if (disposed || !active) return;
+        const socketBase =
+          (Platform.OS === "web"
+            ? process.env.EXPO_PUBLIC_WEB_SOCKET_URL
+            : undefined) || BASE.replace(/^http/, "ws");
         socket = new WebSocket(
-          `${BASE.replace(/^http/, "ws")}/ws/competitions/${id}`,
+          `${socketBase.replace(/^http/, "ws")}/ws/competitions/${id}`,
         );
         socket.onopen = () => socket?.send(JSON.stringify({ token }));
         socket.onmessage = (event) => {

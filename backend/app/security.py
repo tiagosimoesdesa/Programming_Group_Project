@@ -15,6 +15,7 @@ from .models import RefreshSession, User
 hasher = PasswordHasher()
 dummy_hash = hasher.hash(secrets.token_urlsafe(20))
 bearer = HTTPBearer(auto_error=False)
+REFRESH_SECONDS = 30 * 86400
 
 
 def digest(value: str):
@@ -46,7 +47,7 @@ def current_user(auth: HTTPAuthorizationCredentials | None = Depends(bearer), db
 
 def issue_tokens(db: Session, user_id: str):
     refresh = secrets.token_urlsafe(48)
-    db.add(RefreshSession(token_hash=digest(refresh), user_id=user_id, expires_at=int(time.time()) + 30 * 86400))
+    db.add(RefreshSession(token_hash=digest(refresh), user_id=user_id, expires_at=int(time.time()) + REFRESH_SECONDS))
     return {"access_token": encode(user_id, "access", 900), "refresh_token": refresh}
 
 

@@ -40,7 +40,9 @@ services:
       - key: NODE_VERSION
         value: 24
       - key: EXPO_PUBLIC_WEB_API_URL
-        sync: false
+        value: https://beerreal-web.onrender.com/api
+      - key: EXPO_PUBLIC_WEB_SOCKET_URL
+        value: https://beerreal-api.onrender.com
     headers:
       - path: /*
         name: X-Content-Type-Options
@@ -48,3 +50,7 @@ services:
       - path: /*
         name: Referrer-Policy
         value: same-origin
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://beerreal-api.onrender.com/*

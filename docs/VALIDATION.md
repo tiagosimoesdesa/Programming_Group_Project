@@ -2,6 +2,15 @@
 
 Automated checks were run on Windows during implementation. Physical-device checks remain in `DEVICE_TESTS.md`.
 
+## Persistent browser sessions — 19 November 2026
+
+- Added web-only register, login, refresh, and logout endpoints using a rotating, host-only `HttpOnly` refresh cookie; native SecureStore authentication remains unchanged.
+- Backend tests cover trusted and rejected browser origins, cookie flags, rotation, invalid token reuse, and logout. All 36 backend tests pass; one existing Starlette/httpx deprecation warning remains.
+- Alembic reports no pending model operations; this change requires no database migration.
+- OpenAPI and generated TypeScript types were regenerated, and strict TypeScript checking passes.
+- Expo's installed dependency compatibility check passes offline, and production bundles export successfully for iOS, Android, and web.
+- Render is configured to proxy browser `/api/*` requests through the frontend origin while WebSockets connect directly to the API. Reload and logout must still be confirmed after the branch is reviewed, merged, and deployed.
+
 ## Beer points and Battle mode — 19 November 2026
 
 - Updated local `main` through commit `1290ba4`, including independent beer points and the timed team Battle mode.

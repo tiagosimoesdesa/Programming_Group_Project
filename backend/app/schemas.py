@@ -25,6 +25,10 @@ class Tokens(BaseModel):
     refresh_token: str
 
 
+class AccessToken(BaseModel):
+    access_token: str
+
+
 class Profile(BaseModel):
     id: str
     username: str

@@ -3,7 +3,7 @@ import secrets
 import time
 import uuid
 from contextlib import suppress
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
@@ -14,14 +14,15 @@ from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
 from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
-from .schemas import BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
-from .security import current_user, decode, digest, dummy_hash, hasher, issue_tokens, password_matches, rotate
+from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
+from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hasher, issue_tokens, password_matches, rotate
 
 app = FastAPI(title="BEERREAL", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
 PARTY_ROUND_SECONDS = 30 * 60
 PARTY_POINTS = 2
+WEB_REFRESH_COOKIE = "beerreal_refresh"
 BATTLE_DURATIONS = {600, 1800, 2700, 3600, 5400, 7200, 10800, 14400, 18000, 21600, 25200, 32400, 36000}
 PARTY_PROMPTS = [
     ("group", "Group selfie with everyone’s consent"),
@@ -102,6 +103,33 @@ def throttle(db, request, username):
     db.commit()
 
 
+def require_trusted_web_origin(request: Request):
+    if request.headers.get("origin") not in settings.cors_origins:
+        raise HTTPException(403, "Untrusted browser origin")
+
+
+def set_web_refresh_cookie(response: Response, token: str):
+    response.set_cookie(
+        WEB_REFRESH_COOKIE,
+        token,
+        max_age=REFRESH_SECONDS,
+        path="/",
+        secure=settings.public_url.startswith("https://"),
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def clear_web_refresh_cookie(response: Response):
+    response.delete_cookie(
+        WEB_REFRESH_COOKIE,
+        path="/",
+        secure=settings.public_url.startswith("https://"),
+        httponly=True,
+        samesite="lax",
+    )
+
+
 @app.get("/health")
 def health(db: DbSession = Depends(get_db)):
     db.execute(select(1))
@@ -144,6 +172,51 @@ def refresh(body: RefreshIn, db: DbSession = Depends(get_db)):
 def logout(body: RefreshIn, db: DbSession = Depends(get_db)):
     db.execute(delete(RefreshSession).where(RefreshSession.token_hash == digest(body.refresh_token)))
     db.commit()
+
+
+@app.post("/auth/web/register", response_model=AccessToken, status_code=201)
+def web_register(body: Register, request: Request, response: Response, db: DbSession = Depends(get_db)):
+    require_trusted_web_origin(request)
+    tokens = register(body, request, db)
+    set_web_refresh_cookie(response, tokens["refresh_token"])
+    return {"access_token": tokens["access_token"]}
+
+
+@app.post("/auth/web/login", response_model=AccessToken)
+def web_login(body: Credentials, request: Request, response: Response, db: DbSession = Depends(get_db)):
+    require_trusted_web_origin(request)
+    tokens = login(body, request, db)
+    set_web_refresh_cookie(response, tokens["refresh_token"])
+    return {"access_token": tokens["access_token"]}
+
+
+@app.post("/auth/web/refresh", response_model=AccessToken)
+def web_refresh(request: Request, response: Response, db: DbSession = Depends(get_db)):
+    require_trusted_web_origin(request)
+    token = request.cookies.get(WEB_REFRESH_COOKIE)
+    if not token:
+        raise HTTPException(401, "Session expired. Please sign in again.")
+    try:
+        tokens = rotate(db, token)
+    except HTTPException as error:
+        clear_web_refresh_cookie(response)
+        raise HTTPException(
+            error.status_code,
+            error.detail,
+            headers={"Set-Cookie": response.headers["set-cookie"]},
+        )
+    set_web_refresh_cookie(response, tokens["refresh_token"])
+    return {"access_token": tokens["access_token"]}
+
+
+@app.post("/auth/web/logout", status_code=204)
+def web_logout(request: Request, response: Response, db: DbSession = Depends(get_db)):
+    require_trusted_web_origin(request)
+    token = request.cookies.get(WEB_REFRESH_COOKIE)
+    if token:
+        db.execute(delete(RefreshSession).where(RefreshSession.token_hash == digest(token)))
+        db.commit()
+    clear_web_refresh_cookie(response)
 
 
 @app.get("/me", response_model=Profile)

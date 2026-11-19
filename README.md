@@ -42,7 +42,7 @@ The teaching staff approved this five-person team:
 
 Run `./start-preview.ps1` from the project folder, then open http://localhost:8082. The desktop studio displays the actual mobile components inside a resizable phone frame with welcome, login, and registration shortcuts. UI edits update automatically. You can switch device sizes, reset a screen, and simulate a form error without creating accounts.
 
-Choose **Live app** to use the real backend (start `./start-backend.ps1` too). Browser sessions stay in memory and reset on reload. The desktop preview uses `http://localhost:8000`; override it with `EXPO_PUBLIC_WEB_API_URL` if needed. Backend CORS allows only localhost/127.0.0.1 on port 8082 by default; use a JSON `CORS_ORIGINS` environment value for other trusted preview origins. This browser preview helps with layout and interaction; it does not replace testing native cameras and permissions on your phones.
+Choose **Live app** to use the real backend (start `./start-backend.ps1` too). Browser sessions use a rotating, `HttpOnly` refresh cookie and remain signed in for up to 30 days; access tokens stay in memory. The desktop preview uses `http://localhost:8000`; override it with `EXPO_PUBLIC_WEB_API_URL` if needed. Backend CORS allows only localhost/127.0.0.1 on port 8082 by default; use a JSON `CORS_ORIGINS` environment value for other trusted preview origins. This browser preview helps with layout and interaction; it does not replace testing native cameras and permissions on your phones.
 
 If dependencies and local environment files are already configured, run `./start-backend.ps1` and `./start-mobile.ps1` in two PowerShell terminals from this folder. These launchers use the installed project dependencies without requiring npm/uv on the launch path (Node itself must be available).
 
@@ -123,6 +123,7 @@ The [validation record](docs/VALIDATION.md) lists completed checks, remaining de
 - Feed pages contain 20 photos. Live refresh returns to the latest page. Signed URLs last ten minutes; active event views refresh periodically.
 - Failed captures stay available during the current app session. Offline background queues are not implemented.
 - Password recovery is deferred. Logout revokes the refresh token; issued access tokens expire within 15 minutes.
+- Native refresh tokens stay in SecureStore. Web refresh tokens use a host-only, `HttpOnly` cookie through the frontend `/api` proxy, so page reloads restore the session without exposing the refresh token to JavaScript.
 - Age gating is self-attestation. Public launch needs privacy/retention policies, account deletion, moderation/reporting, age controls, and distribution review.
 - Advanced statistics, achievements, sounds, push notifications, automatic invitation links, and result-card exports are deferred.
 

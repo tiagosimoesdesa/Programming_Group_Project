@@ -10,7 +10,7 @@ Agree on a small task in a GitHub issue and assign one owner. Include the intend
 ```powershell
 git switch main
 git pull --ff-only origin main
-git switch -c codex/short-task-name
+git switch -c feature/short-task-name
 ```
 
 Start with a clean working tree; commit unfinished work on its own branch before switching tasks. Use a new branch for each task.
@@ -32,7 +32,7 @@ git push -u origin HEAD
 
 Stage only intended files. Never commit `.env` files, credentials, local databases, uploaded photos, or dependency folders. Share configuration names through `.env.example`; each teammate supplies their own local values.
 
-Open a pull request into `main`, explain the change, and request a teammate's review. Wait for the `api` and `mobile` checks and resolve review feedback before merging. Use a squash merge for one coherent task, then update everyone's local `main` before starting the next task.
+Open a pull request into `main`, explain the change, and request a teammate's review. The author does not merge their own pull request without that review. Wait for the `api` and `mobile` checks and resolve review feedback before merging. Use a squash merge for one coherent task, then update everyone's local `main` before starting the next task.
 
 If the branch falls behind, commit your work, fetch, and merge `origin/main` into the task branch. Resolve conflicts together with the affected teammate and rerun relevant checks. Avoid force-pushing shared branches.
 

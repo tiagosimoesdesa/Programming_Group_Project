@@ -28,6 +28,16 @@ For local development, install Node.js 24 LTS or newer (including npm), Python 3
 
 The [course project checklist](docs/COURSE_CHECKLIST.md) tracks submission, grading, deployment, security, device-testing, and presentation readiness. Before submission, this README must also include the final public application URL and every member's full name and student number.
 
+## Team
+
+The teaching staff approved this five-person team:
+
+- Rodrigo Carvalho — 62487
+- Afonso Nobre — 62474
+- Tiago Sá — 78344
+- João Cardoso — 62478
+- Gonçalo Silva — 81205
+
 ## Desktop design preview
 
 Run `./start-preview.ps1` from the project folder, then open http://localhost:8082. The desktop studio displays the actual mobile components inside a resizable phone frame with welcome, login, and registration shortcuts. UI edits update automatically. You can switch device sizes, reset a screen, and simulate a form error without creating accounts.

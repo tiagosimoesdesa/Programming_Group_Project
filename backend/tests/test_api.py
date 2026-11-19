@@ -379,6 +379,14 @@ def test_party_mode_rounds_attempts_and_combined_score(client, monkeypatch):
         files={side: (f"{side}.jpg", image(), "image/jpeg") for side in ("rear", "front")},
     )
     assert expired.status_code == 409
+    drink = submit(client, host, night["id"])
+    assert drink.status_code == 201
+    assert client.post(path + "/end", headers=host).status_code == 200
+    closed = client.get(path, headers=host).json()
+    assert any(photo["kind"] == "challenge" for photo in closed["feed"])
+    moments = next(entry for entry in closed["recap"] if entry["user"]["id"] == host_row["id"])
+    assert moments["first"]["id"] == drink.json()["id"]
+    assert moments["last"] is None
 
 
 @pytest.mark.parametrize("quantity,pints,points", [(1, 0, 1), (1, 1, 2), (5, 2, 7), (10, 10, 20)])

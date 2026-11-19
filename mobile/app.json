@@ -1,6 +1,7 @@
 {
   "expo": {
-    "name": "BEERREAL",
+    "name": "COUNT THE JOLS",
+    "icon": "./assets/app-icon.png",
     "slug": "beerreal",
     "scheme": "beerreal",
     "version": "0.1.0",
@@ -20,14 +21,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow BEERREAL to capture your drink and selfie.",
+          "cameraPermission": "Allow COUNT THE JOLS to capture your drink and selfie.",
           "recordAudioAndroid": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose your BEERREAL profile picture.",
+          "photosPermission": "Choose your COUNT THE JOLS profile picture.",
           "microphonePermission": false
         }
       ],

@@ -1,4 +1,4 @@
-# BEERREAL
+# COUNT THE JOLS
 
 Working with the group? Read [the collaboration workflow](CONTRIBUTING.md) for branches, reviews, and sharing changes.
 
@@ -6,23 +6,23 @@ A private, camera-first mobile app for nights with friends. React Native / Expo 
 
 ## Included
 
-- Charcoal/yellow interface, onboarding, username/password accounts, optional avatars, and legal-age self-attestation.
+- Black and gold interface, onboarding, username/password accounts, optional avatars, and legal-age self-attestation.
 - Private competitions with shareable invitation codes and multiple active events per user.
-- Host-selected **Classic**, **Party**, and **Battle** modes. Classic scores drink photo pairs; Party adds timed, voted photo challenges; Battle puts two named teams into a timed points competition.
+- Host-selected **Classic**, **Party**, and **Battle** modes. Classic scores drink photo pairs. Party adds timed, voted photo challenges. Battle puts two named teams into a timed competition.
 - Rear camera → selfie → preview/retake → confirm visible beer count → submit. Gallery access is available **only for profile pictures**.
-- Private photo feed, live standings, shared ranks, host-only finish, top-three rank groups, and history.
+- Private photo feed, live standings, shared ranks, host-only finish, an animated podium for Classic and Party, and Night moments with each player's first and last beer photos.
 - Player filters, full-screen photo pairs, and one changeable reaction per person per photo.
-- Party Mode starts when the host is ready and at least two players are present. It reveals one safe photo challenge every 30 minutes for up to eight hours; each approved rear-photo/selfie pair earns two bonus points.
+- Party Mode starts when the host is ready and at least two players are present. It reveals one safe photo challenge every 30 minutes for up to eight hours. Each approved rear-photo/selfie pair earns two bonus Jols.
 - Battle hosts choose a fixed duration, team names, and whether opposing scores and photos are shown live or revealed only at the end. Players join by code, choose or switch teams in the lobby, and are locked in when the host starts. The final 10% shows a countdown warning; final team totals and each team’s member ranking are revealed when time expires.
 - Host-generated spectator codes let invited friends from other groups watch, react, and revisit the night without posting, voting, or appearing in the standings. Join them using the normal invitation-code form. There is no public group directory.
 - Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
 - SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
 
-Check-ins are trust-based. Players confirm how many beers are visible in each accepted drink photo, and select quantities for regular beers (below 0.5 L, 1 point each) and pints (exactly 0.5 L, 2 points each). Each drink always counts as one beer. The app cannot verify consumption, ownership, or that a drink is new. Only confirmed submissions change the score.
+Check-ins are trust-based. Players confirm how many beers are visible in each accepted drink photo, and select quantities for regular beers (below 0.5 L, 1 Jol each) and pints (exactly 0.5 L, 2 Jols each). Each drink always counts as one beer. The app cannot verify consumption, ownership, or that a drink is new. Only confirmed submissions change the score.
 
 ## Requirements
 
-The teaching staff approved the project's Python/FastAPI backend with a React Native/TypeScript frontend because BEERREAL requires a camera-first mobile interface and real-time multi-user interaction. Keep this architecture consistent unless the team and teaching staff agree to change it.
+The teaching staff approved the project's Python/FastAPI backend with a React Native/TypeScript frontend because COUNT THE JOLS requires a camera-first mobile interface and real-time multi-user interaction. Keep this architecture consistent unless the team and teaching staff agree to change it.
 
 For local development, install Node.js 24 LTS or newer (including npm), Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/). Native testing uses Expo Go compatible with SDK 58. Local phone testing requires the computer and phones to reach each other on the same private network; the production deployment uses public HTTPS URLs instead.
 

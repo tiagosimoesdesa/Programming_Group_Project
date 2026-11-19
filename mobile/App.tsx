@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import {
@@ -31,6 +30,9 @@ import {
 } from "./src/api";
 import AuthScreen from "./src/AuthScreen";
 import LoadingScreen from "./src/LoadingScreen";
+import { BrandHeader } from "./src/Brand";
+import NightBackdrop from "./src/NightBackdrop";
+import TonightScreen, { NightListItem } from "./src/TonightScreen";
 import CompetitionScreen from "./src/CompetitionScreen";
 import { Capture } from "./src/CameraScreen";
 import {
@@ -262,61 +264,12 @@ function Root() {
     setTeamB("");
     setSheetError("");
   }
-  function eventCard(event: Competition) {
-    return (
-      <Pressable
-        key={event.id}
-        accessibilityRole="button"
-        onPress={() => setSelected(event.id)}
-      >
-        <View style={s.card}>
-          <View style={s.between}>
-            <View style={[s.iconButton, { backgroundColor: colors.raised }]}>
-              <Icon
-                name={event.ended_at ? "moon-outline" : "beer-outline"}
-                color={colors.yellow}
-              />
-            </View>
-            <View style={s.pill}>
-              <Text style={s.pillText}>
-                {event.ended_at ? "FINISHED" : "● LIVE"}
-              </Text>
-            </View>
-          </View>
-          <Text style={s.h3}>{event.name}</Text>
-          <Text
-            style={[
-              s.eyebrow,
-              { color: event.mode === "party" ? colors.yellow : colors.muted },
-            ]}
-          >
-            {event.mode === "party"
-              ? "PARTY MODE"
-              : event.mode === "battle"
-                ? "BATTLE"
-                : "CLASSIC MODE"}
-          </Text>
-          <View style={s.between}>
-            <Text style={s.small}>
-              {event.participants} friends ·{" "}
-              {new Date(event.created_at * 1000).toLocaleDateString([], {
-                month: "short",
-                day: "numeric",
-              })}
-            </Text>
-            <Icon name="arrow-forward" color={colors.yellow} size={20} />
-          </View>
-        </View>
-      </Pressable>
-    );
-  }
   if (boot) return <LoadingScreen />;
   if (bootError)
     return (
-      <View style={[s.content, { flex: 1, justifyContent: "center" }]}>
-        <Text style={s.brand}>
-          BEER<Text style={{ color: colors.yellow }}>REAL.</Text>
-        </Text>
+      <View style={[s.root, s.content, { justifyContent: "center" }]}>
+        <NightBackdrop />
+        <BrandHeader />
         <ErrorText message={bootError} />
         <Button title="Reconnect" onPress={() => void bootUp()} />
       </View>
@@ -342,6 +295,7 @@ function Root() {
   const history = events.filter((e) => e.ended_at);
   return (
     <View style={s.root}>
+      <NightBackdrop bubbles={tab === "home"} />
       <ScrollView
         contentContainerStyle={[s.content, { flexGrow: 1 }]}
         refreshControl={
@@ -352,134 +306,30 @@ function Root() {
           />
         }
       >
-        <View style={s.between}>
-          <Text style={s.brand}>
-            BEER<Text style={{ color: colors.yellow }}>REAL.</Text>
-          </Text>
-          <Pressable
-            accessibilityLabel="Open profile"
-            onPress={() => setTab("profile")}
-          >
-            <Avatar user={me} size={42} />
-          </Pressable>
-        </View>
+        <BrandHeader />
         <ErrorText message={error} />
         <Entrance trigger={tab}>
           {tab === "home" ? (
-            <View style={{ gap: 26 }}>
-              <View style={{ gap: 8 }}>
-                <Text style={s.eyebrow}>
-                  HEY, {me.username.toUpperCase()} ✳
-                </Text>
-                <Text style={s.h1}>Good nights.{"\n"}Better stories.</Text>
-                <Text style={s.body}>Bring your people. Be in the moment.</Text>
-              </View>
-              <LinearGradient
-                colors={["#F5D56A", "#E6B634"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  padding: 24,
-                  borderRadius: 28,
-                  gap: 18,
-                  overflow: "hidden",
-                }}
-              >
-                <View style={s.between}>
-                  <Text
-                    style={{
-                      color: "#47401F",
-                      fontSize: 11,
-                      fontWeight: "800",
-                      letterSpacing: 2,
-                    }}
-                  >
-                    MAKE TONIGHT A STORY
-                  </Text>
-                  <Icon name="sparkles-outline" color="#51441D" size={28} />
-                </View>
-                <Text
-                  style={{
-                    color: colors.bg,
-                    fontSize: 30,
-                    lineHeight: 33,
-                    fontWeight: "900",
-                    letterSpacing: -1,
-                  }}
-                >
-                  Your friends.{"\n"}Your kind of night.
-                </Text>
-                <Text
-                  style={{
-                    color: "#454021",
-                    fontSize: 14,
-                    maxWidth: 240,
-                    lineHeight: 21,
-                  }}
-                >
-                  A private space for the group and the moments worth keeping.
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => openSheet("create")}
-                  style={[
-                    s.button,
-                    { backgroundColor: colors.bg, alignSelf: "flex-start" },
-                  ]}
-                >
-                  <Text style={[s.buttonText, { color: colors.text }]}>
-                    Start a night
-                  </Text>
-                  <Icon name="arrow-forward" size={18} />
-                </Pressable>
-              </LinearGradient>
-              <Button
-                title="Battle"
-                icon="trophy-outline"
-                onPress={() => openSheet("battle-menu")}
-              />
-              <Button
-                title="Have a code? Join your friends"
-                secondary
-                icon="ticket-outline"
-                onPress={() => openSheet("join")}
-              />
-              <View style={s.between}>
-                <Text style={s.h3}>Happening now</Text>
-                <Text style={s.small}>{active.length} active</Text>
-              </View>
-              {active.length ? (
-                active.map(eventCard)
-              ) : (
-                <Empty
-                  title="The night is unwritten"
-                  body="Start a competition or join your friends with their invitation code."
-                  icon="moon-outline"
-                />
-              )}
-              {history.length > 0 && (
-                <>
-                  <View style={s.between}>
-                    <Text style={s.h3}>Last time, together</Text>
-                    <Pressable onPress={() => setTab("history")}>
-                      <Text style={{ color: colors.yellow, padding: 10 }}>
-                        View all
-                      </Text>
-                    </Pressable>
-                  </View>
-                  {history.slice(0, 2).map(eventCard)}
-                </>
-              )}
-            </View>
+            <TonightScreen
+              nights={active}
+              onOpen={setSelected}
+              onStart={() => openSheet("create")}
+              onJoin={() => openSheet("join")}
+              onBattle={() => openSheet("battle-menu")}
+            />
           ) : tab === "history" ? (
-            <View style={{ gap: 24 }}>
-              <Text style={s.eyebrow}>THE GOOD TIMES STAY</Text>
-              <Text style={s.h1}>Your nights,{"\n"}remembered.</Text>
-              <Text style={s.body}>
-                Final standings, familiar faces, and every captured moment.
+            <View style={{ gap: 16 }}>
+              <Text accessibilityRole="header" style={s.h1}>
+                Memories
               </Text>
               {history.length ? (
-                history.map(eventCard)
+                history.map((event) => (
+                  <NightListItem
+                    key={event.id}
+                    event={event}
+                    onOpen={() => setSelected(event.id)}
+                  />
+                ))
               ) : (
                 <Empty
                   title="Memories in the making"
@@ -489,12 +339,14 @@ function Root() {
               )}
             </View>
           ) : (
-            <View style={{ gap: 24 }}>
-              <Text style={s.eyebrow}>ONE OF THE GOOD ONES</Text>
+            <View style={{ gap: 16 }}>
+              <Text accessibilityRole="header" style={s.h1}>
+                Profile
+              </Text>
               <View
                 style={{ alignItems: "center", gap: 12, paddingVertical: 16 }}
               >
-                <Avatar user={me} size={100} />
+                <Avatar user={me} size={84} />
                 <Text style={s.h2}>@{me.username}</Text>
                 <Pressable
                   accessibilityRole="button"
@@ -542,43 +394,49 @@ function Root() {
                 loading={busy}
                 onPress={signOut}
               />
-              <Text style={[s.small, { textAlign: "center" }]}>
-                BEERREAL · First release{"\n"}Made for real moments.
-              </Text>
             </View>
           )}
         </Entrance>
       </ScrollView>
-      <View style={s.bottom}>
-        {(["home", "history", "profile"] as const).map((item) => (
+      <View accessibilityRole="tablist" style={s.bottom}>
+        {(
+          [
+            { id: "home", label: "Tonight", icon: "home-outline" },
+            { id: "history", label: "Memories", icon: "images-outline" },
+            { id: "profile", label: "Profile", icon: "person-outline" },
+          ] as const
+        ).map(({ id, label, icon }) => (
           <Pressable
-            key={item}
+            key={id}
+            accessibilityLabel={label}
             accessibilityRole="tab"
-            accessibilityState={{ selected: tab === item }}
-            onPress={() => setTab(item)}
-            style={s.nav}
+            accessibilityState={{ selected: tab === id }}
+            onPress={() => setTab(id)}
+            style={({ pressed }) => [
+              s.nav,
+              tab === id && { backgroundColor: colors.yellow },
+              pressed && { opacity: 0.78 },
+            ]}
           >
-            <Icon
-              name={
-                item === "home"
-                  ? "grid-outline"
-                  : item === "history"
-                    ? "albums-outline"
-                    : "person-outline"
-              }
-              color={tab === item ? colors.yellow : colors.muted}
-            />
+            {id === "profile" && me.avatar_url ? (
+              <Avatar user={me} size={21} />
+            ) : (
+              <Icon
+                name={icon}
+                size={21}
+                color={tab === id ? colors.bg : colors.text}
+              />
+            )}
             <Text
               style={[
                 s.small,
-                { color: tab === item ? colors.yellow : colors.muted },
+                {
+                  color: tab === id ? colors.bg : colors.text,
+                  fontWeight: "800",
+                },
               ]}
             >
-              {item === "home"
-                ? "Tonight"
-                : item === "history"
-                  ? "Memories"
-                  : "You"}
+              {label}
             </Text>
           </Pressable>
         ))}
@@ -605,25 +463,30 @@ function Root() {
               maxHeight: "92%",
               borderTopLeftRadius: 32,
               borderTopRightRadius: 32,
-              backgroundColor: colors.bg,
+              backgroundColor: colors.card,
             }}
             contentContainerStyle={{
               flexGrow: 0,
               padding: 28,
               paddingBottom: 44,
-              gap: 20,
+              gap: 16,
             }}
           >
             <View style={s.between}>
-              <Text style={s.eyebrow}>
-                {sheet?.startsWith("battle")
-                  ? "BATTLE"
-                  : sheet === "create"
-                    ? "ASSEMBLE YOUR PEOPLE"
-                    : "YOU’RE INVITED"}
+              <Text accessibilityRole="header" style={s.h2}>
+                {sheet === "battle-menu"
+                  ? "Battle"
+                  : sheet === "battle-create"
+                    ? "Create a Battle"
+                    : sheet === "battle-join"
+                      ? "Join a Battle"
+                      : sheet === "create"
+                        ? "Start a night"
+                        : "Join with a code"}
               </Text>
               <Pressable
                 disabled={busy}
+                accessibilityRole="button"
                 accessibilityLabel="Close"
                 onPress={() => setSheet(null)}
                 style={s.iconButton}
@@ -631,17 +494,6 @@ function Root() {
                 <Icon name="close" />
               </Pressable>
             </View>
-            <Text style={s.h2}>
-              {sheet === "battle-menu"
-                ? "Ready to compete?"
-                : sheet === "battle-create"
-                  ? "Create your battle."
-                  : sheet === "battle-join"
-                    ? "Enter the battle."
-                    : sheet === "create"
-                      ? "Give the night a name."
-                      : "Meet you in there."}
-            </Text>
             <Text style={s.body}>
               {sheet === "battle-menu"
                 ? "Create a two-team battle or enter one with the host’s code."
@@ -739,12 +591,12 @@ function Root() {
                   {[
                     {
                       value: true,
-                      title: "Show points",
+                      title: "Show Jols",
                       body: "Both teams can see every score and photo live.",
                     },
                     {
                       value: false,
-                      title: "Hide points",
+                      title: "Hide Jols",
                       body: "Each team sees only its own score and photos until time is up.",
                     },
                   ].map((option) => (
@@ -791,12 +643,12 @@ function Root() {
                   {
                     id: "classic" as const,
                     title: "Classic",
-                    body: "One drink photo equals one point. Simple live leaderboard.",
+                    body: "Earn Jols for the regular beers and pints you check in.",
                   },
                   {
                     id: "party" as const,
                     title: "Party",
-                    body: "Drink photos plus timed challenges. Approved challenges earn 2 bonus points.",
+                    body: "Drink photos plus timed challenges. Approved challenges earn 2 bonus Jols.",
                   },
                 ].map((mode) => (
                   <Pressable

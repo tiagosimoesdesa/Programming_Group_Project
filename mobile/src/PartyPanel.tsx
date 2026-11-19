@@ -189,7 +189,7 @@ export default function PartyPanel({
             ]}
           >
             {attempt.status === "approved"
-              ? "Approved · +2 points"
+              ? "Approved · +2 Jols"
               : attempt.status === "pending"
                 ? "Awaiting approval"
                 : "Not approved"}{" "}

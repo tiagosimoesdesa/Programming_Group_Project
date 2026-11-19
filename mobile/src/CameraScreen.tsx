@@ -11,6 +11,8 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as Crypto from "expo-crypto";
+import { APP_NAME } from "./Brand";
+import NightBackdrop from "./NightBackdrop";
 import { Button, colors, ErrorText, Icon, s } from "./ui";
 
 export type Capture = {
@@ -86,10 +88,12 @@ export default function CameraScreen({
     }
   }
   return (
-    <View style={[s.root, { padding: 20, gap: 18 }]}>
+    <View style={[s.root, { padding: 18, gap: 13 }]}>
+      <NightBackdrop />
       <View style={s.between}>
         <Pressable
           disabled={busy || taking}
+          accessibilityRole="button"
           accessibilityLabel="Close camera"
           onPress={onClose}
           style={s.iconButton}
@@ -97,21 +101,17 @@ export default function CameraScreen({
           <Icon name="close" />
         </Pressable>
         <Text style={s.eyebrow}>
-          {pending
-            ? "YOUR MOMENT"
-            : rear
-              ? "02 / THE PERSON"
-              : "01 / THE DRINK"}
+          {pending ? "CHECK-IN" : rear ? "2 OF 2" : "1 OF 2"}
         </Text>
         <View style={{ width: 44 }} />
       </View>
       <View>
-        <Text style={s.h2}>
+        <Text accessibilityRole="header" style={s.h2}>
           {pending
-            ? "Keep it real."
+            ? "Review photos"
             : rear
-              ? "Now, your side."
-              : "Show the moment."}
+              ? "Take a selfie"
+              : "Photograph your drink"}
         </Text>
         <Text style={s.body}>
           {name} ·{" "}
@@ -125,7 +125,9 @@ export default function CameraScreen({
       <View
         style={{
           flex: 1,
-          borderRadius: 28,
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: colors.line,
           overflow: "hidden",
           backgroundColor: colors.card,
           minHeight: 200,
@@ -158,8 +160,8 @@ export default function CameraScreen({
             <Icon name="camera-outline" size={40} color={colors.yellow} />
             <Text style={s.h3}>Camera access needed</Text>
             <Text style={s.body}>
-              BEERREAL uses fresh camera photos. Your gallery is never used for
-              check-ins.
+              {APP_NAME} uses fresh camera photos. Your gallery is never used
+              for check-ins.
             </Text>
             <Button
               title={permission.canAskAgain ? "Allow camera" : "Open settings"}

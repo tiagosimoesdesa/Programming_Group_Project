@@ -53,7 +53,7 @@ async function raw(path: string, options: RequestInit = {}) {
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new Error(
-      "Unable to reach BEERREAL. Check your connection; the server may be waking up.",
+      "Unable to reach COUNT THE JOLS. Check your connection; the server may be waking up.",
     );
   } finally {
     clearTimeout(timeout);

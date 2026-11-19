@@ -35,4 +35,3 @@
 - Review the complete diff for unrelated changes, secrets, generated files, and personal data before committing.
 - Use a focused pull request, wait for the `api` and `mobile` checks, and obtain a teammate review. The author does not merge their own pull request without that review.
 - Leave `main` deployable: code on `main`, generated API contracts, migrations, documentation, and the public deployment must describe the same version.
-

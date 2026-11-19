@@ -26,4 +26,3 @@ The repository already has a collaboration guide and automated checks, but it do
 - All listed documentation files exist and agree on the current architecture and three game modes.
 - `git diff --check` passes and the diff contains no application-code or secret changes.
 - A teammate reviews the pull request and the repository checks pass before merge.
-

@@ -18,4 +18,3 @@ Explain the user or project problem and the intent that should guide ambiguous d
 - State the exact automated checks that pass.
 - State the manual workflow that was checked in the running application.
 - State any device, deployment, or multi-user evidence required.
-

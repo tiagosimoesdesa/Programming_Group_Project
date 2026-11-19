@@ -72,4 +72,3 @@ This checklist follows the current team-project rules and grading criteria. Upda
 - [ ] Open Render and Supabase the day before to confirm that neither service is paused or over its limit.
 - [ ] Open the application before the presentation so free services are awake.
 - [ ] Stop merging the day before the presentation and reset the demo data after rehearsal.
-

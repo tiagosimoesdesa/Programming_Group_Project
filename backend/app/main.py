@@ -354,6 +354,8 @@ def battle_state(db, event, viewer_id):
         total = sum(row[4] for row in team_rows)
         totals[key] = total
         reveal = status in ("waiting", "complete", "cancelled") or event.battle_points_visible or membership.team == key
+        if not reveal:
+            team_rows.sort(key=lambda row: row[0].username)
         members, rank, previous = [], 0, None
         for person, _, count, _challenge_points, points in team_rows:
             if points != previous:
@@ -743,7 +745,12 @@ def social(event_id: str, user: User = Depends(current_user), db: DbSession = De
     if event.mode == "battle":
         raise HTTPException(409, "Battle privacy and scoring are managed in Battle Mode")
     claims, scores = [], {}
-    for claim in db.scalars(select(ChallengeClaim).where(ChallengeClaim.competition_id == event_id).order_by(ChallengeClaim.id)):
+    legacy_claims = (
+        select(ChallengeClaim)
+        .where(ChallengeClaim.competition_id == event_id, ChallengeClaim.round_id.is_(None))
+        .order_by(ChallengeClaim.id)
+    )
+    for claim in db.scalars(legacy_claims):
         votes = dict(db.execute(select(ChallengeVote.user_id, ChallengeVote.approve).where(ChallengeVote.claim_id == claim.id)).all())
         approvals = sum(votes.values())
         required = len(claim.voters) // 2 + 1
@@ -817,7 +824,7 @@ def vote_challenge(event_id: str, claim_id: str, body: VoteIn, user: User = Depe
         raise HTTPException(409, "Social challenges are unavailable in Battle Mode")
     event = lock_event(db, event_id)
     claim = db.get(ChallengeClaim, claim_id)
-    if not claim or claim.competition_id != event_id:
+    if not claim or claim.competition_id != event_id or claim.round_id is not None:
         raise HTTPException(404, "Challenge not found")
     if event.ended_at:
         raise HTTPException(409, "Voting is closed")

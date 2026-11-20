@@ -22,7 +22,7 @@ def test_beer_points_migration_preserves_history(tmp_path):
     migrate("upgrade", "head")
     with sqlite3.connect(database) as db:
         assert db.execute("SELECT beer_count, pint_count, rear, front FROM submissions").fetchone() == (5, 0, "rear.jpg", "front.jpg")
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
     migrate("downgrade", "0005")
     with sqlite3.connect(database) as db:
         assert db.execute("SELECT beer_count FROM submissions").fetchone() == (5,)

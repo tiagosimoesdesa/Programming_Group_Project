@@ -6,7 +6,7 @@ This checklist follows the current team-project rules and grading criteria. Upda
 
 - [x] The GitHub repository is public.
 - [x] The deployed application code is developed and merged on `main`.
-- [ ] The public deployed application URL is added to `README.md`.
+- [x] The public deployed application URL is added to `README.md`.
 - [x] Every member's full name and student number are added to `README.md`.
 - [x] `README.md` contains commands to run the application and tests locally.
 - [ ] One member submits the repository link on Moodle before **23 November 2026 at 23:59**.

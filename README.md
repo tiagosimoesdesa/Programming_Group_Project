@@ -1,34 +1,12 @@
 # COUNT THE JOLS
 
-Working with the group? Read [the collaboration workflow](CONTRIBUTING.md) for branches, reviews, and sharing changes.
+COUNT THE JOLS is a private, camera-first application for social nights with friends. Players join invitation-only competitions, submit a rear photo and selfie for each check-in, and follow live scores through Classic, Party, or Battle modes.
 
-A private, camera-first mobile app for nights with friends. React Native / Expo powers the iPhone and Android app; Python / FastAPI powers accounts, event rules, scoring, and live updates.
+The interface runs on React Native and Expo for iPhone, Android, and the web. A Python/FastAPI backend is authoritative for authentication, permissions, persistence, scheduling, validation, and scoring.
 
-## Included
+Working with the group? Read [CONTRIBUTING.md](CONTRIBUTING.md) before creating a branch or sharing changes.
 
-- Black and gold interface, onboarding, username/password accounts, optional avatars, and legal-age self-attestation.
-- Private competitions with shareable invitation codes and multiple active events per user.
-- Host-selected **Classic**, **Party**, and **Battle** modes. Classic scores drink photo pairs. Party adds timed, voted photo challenges. Battle puts two named teams into a timed competition.
-- Rear camera → selfie → preview/retake → confirm visible beer count → submit. Gallery access is available **only for profile pictures**.
-- Private photo feed, live standings, shared ranks, host-only finish, an animated podium for Classic and Party, and Night moments with each player's first and last beer photos.
-- Player filters, full-screen photo pairs, and one changeable reaction per person per photo.
-- Party Mode starts when the host is ready and at least two players are present. It reveals one safe photo challenge every 30 minutes for up to eight hours. Each approved rear-photo/selfie pair earns two bonus Jols.
-- Battle hosts choose a fixed duration, team names, and whether opposing scores and photos are shown live or revealed only at the end. Players join by code, choose or switch teams in the lobby, and are locked in when the host starts. The final 10% shows a countdown warning; final team totals and each team’s member ranking are revealed when time expires.
-- Host-generated spectator codes let invited friends from other groups watch, react, and revisit the night without posting, voting, or appearing in the standings. Join them using the normal invitation-code form. There is no public group directory.
-- Argon2 passwords, short-lived access tokens, rotating refresh tokens in SecureStore, login throttling, temporary private photo URLs, and idempotent scoring.
-- SQLite/private files for local development; PostgreSQL/Supabase Storage and Render configuration for hosting.
-
-Check-ins are trust-based. Players confirm how many beers are visible in each accepted drink photo, and select quantities for regular beers (below 0.5 L, 1 Jol each) and pints (exactly 0.5 L, 2 Jols each). Each drink always counts as one beer. The app cannot verify consumption, ownership, or that a drink is new. Only confirmed submissions change the score.
-
-## Requirements
-
-The teaching staff approved the project's Python/FastAPI backend with a React Native/TypeScript frontend because COUNT THE JOLS requires a camera-first mobile interface and real-time multi-user interaction. Keep this architecture consistent unless the team and teaching staff agree to change it.
-
-For local development, install Node.js 24 LTS or newer (including npm), Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/). Native testing uses Expo Go compatible with SDK 58. Local phone testing requires the computer and phones to reach each other on the same private network; the production deployment uses public HTTPS URLs instead.
-
-The [course project checklist](docs/COURSE_CHECKLIST.md) tracks submission, grading, deployment, security, device-testing, and presentation readiness. Before submission, this README must also include the final public application URL and every member's full name and student number.
-
-## Team
+## Team Members
 
 The teaching staff approved this five-person team:
 
@@ -38,21 +16,100 @@ The teaching staff approved this five-person team:
 - João Cardoso — 62478
 - Gonçalo Silva — 81205
 
-## Desktop design preview
+## Live Application
 
-Run `./start-preview.ps1` from the project folder, then open http://localhost:8082. The desktop studio displays the actual mobile components inside a resizable phone frame with welcome, login, and registration shortcuts. UI edits update automatically. You can switch device sizes, reset a screen, and simulate a form error without creating accounts.
+- **Current version:** 0.1.0
+- **Public application:** [beerreal-web.onrender.com](https://beerreal-web.onrender.com)
+- **API health:** [beerreal-api.onrender.com/health](https://beerreal-api.onrender.com/health)
+- **Deployment branch:** `main`
 
-Choose **Live app** to use the real backend (start `./start-backend.ps1` too). Browser sessions use a rotating, `HttpOnly` refresh cookie and remain signed in for up to 30 days; access tokens stay in memory. The desktop preview uses `http://localhost:8000`; override it with `EXPO_PUBLIC_WEB_API_URL` if needed. Backend CORS allows only localhost/127.0.0.1 on port 8082 by default; use a JSON `CORS_ORIGINS` environment value for other trusted preview origins. This browser preview helps with layout and interaction; it does not replace testing native cameras and permissions on your phones.
+The web application and API run on Render over HTTPS. Supabase provides PostgreSQL and the private `beerreal` photo bucket. Production credentials are stored only in provider dashboards and are never included in the mobile or web bundle.
 
-If dependencies and local environment files are already configured, run `./start-backend.ps1` and `./start-mobile.ps1` in two PowerShell terminals from this folder. These launchers use the installed project dependencies without requiring npm/uv on the launch path (Node itself must be available).
+Render free services may need time to wake after inactivity. The health endpoint returns `{"status":"ok"}` when the API is ready.
 
-Connect both phones and your PC to the same private Wi-Fi for local native testing.
+On iPhone, open the public application in Safari and select **Add to Home Screen**. The installed web app uses a dedicated icon, an edge-to-edge dark layout, and safe-area handling.
 
-Use Expo Go compatible with SDK 58 from the App Store or Google Play. See the [Expo download page](https://expo.dev/go) for compatible builds. Later iPhone distribution through EAS cloud builds requires Apple developer enrollment.
+## Project Overview
 
-## Run the Python backend
+COUNT THE JOLS supports private, invitation-only nights with multiple active competitions per user. A host creates a night, selects its mode, and shares a join code. Players capture a rear photo followed by a selfie, review or retake the pair, confirm the visible drink quantities, and submit.
 
-In PowerShell, from the project folder:
+Check-ins are trust-based. Players distinguish regular beers below 0.5 L from pints of exactly 0.5 L:
+
+- Each regular beer is worth **1 Jol**.
+- Each pint is worth **2 Jols**.
+- Each drink counts as one beer independently of its point value.
+
+The application cannot prove consumption, ownership, or that a drink is new. Scores change only after the backend accepts a confirmed submission.
+
+Camera access is offered after sign-in. A player may continue with **Later** and enable access when first opening the camera. Gallery access is available only for profile pictures, never for competition submissions.
+
+## Main Features
+
+### Classic
+
+- Scores accepted drink photo pairs using the confirmed Regular and Pint quantities.
+- Shows a private feed, live standings, shared dense ranks, reactions, and player filters.
+- Allows only the host to finish the night.
+- Presents final standings, an animated podium, and each player's first and last Night moments.
+
+### Party
+
+- Requires the host and at least one additional player before starting.
+- Reveals one safe photo challenge every 30 minutes for up to eight hours.
+- Lets each player submit one dedicated rear-photo/selfie pair per challenge.
+- Uses majority voting enforced by the backend.
+- Awards two bonus Jols for each approved challenge pair.
+
+### Battle
+
+- Places players into two host-named teams for a fixed-duration competition.
+- Allows team selection and switching in the lobby, then locks membership when the host starts.
+- Lets the host show opposing scores and photos live or hide them until the end.
+- Shows a warning during the final 10% of the timer.
+- Reveals final team totals and each team's member ranking when time expires.
+
+### Social, accounts, and history
+
+- Username/password accounts, optional avatars, and legal-age self-attestation.
+- Multiple active competitions and private invitation codes.
+- Full-screen photo pairs and one changeable reaction per person per photo.
+- Spectator codes for invited viewers who may watch and react but cannot post, vote, or enter standings.
+- Finished-night history, final standings, and first/last moments for every player.
+- Live updates through authenticated WebSockets, with polling fallback and foreground resynchronization.
+
+## Technology Stack
+
+| Area | Technology | Responsibility |
+| --- | --- | --- |
+| Mobile and web | React Native, Expo, TypeScript | Screens, camera flow, interaction, presentation, and live updates |
+| Backend API | Python, FastAPI | Authentication, permissions, validation, scoring, scheduling, and authoritative game rules |
+| Database | SQLite locally; PostgreSQL on Supabase | Accounts, competitions, submissions, votes, scores, and history |
+| Photo storage | Local private files in development; private Supabase Storage in production | Rear photos, selfies, and profile images |
+| Database migrations | Alembic | Versioned and reproducible database changes |
+| Authentication | Argon2, short-lived access tokens, rotating refresh tokens | Password protection and session security |
+| Hosting | Render | Public FastAPI service and Expo web application |
+| API contract | FastAPI OpenAPI and openapi-typescript | Synchronized backend schema and generated TypeScript client |
+
+The teaching staff approved the Python/FastAPI backend with a React Native/TypeScript frontend because the project needs a camera-first interface and real-time multi-user interaction. Do not change this architecture without a documented team decision and teaching-staff approval.
+
+## Installation & Setup
+
+### Prerequisites
+
+Install:
+
+- Node.js 24 LTS or newer, including npm.
+- Python 3.12.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/).
+- Expo Go compatible with SDK 58 for native phone testing.
+
+For local phone testing, connect the development computer and phones to the same private Wi-Fi. Guest networks may isolate devices. The public deployment uses HTTPS and does not require the same network.
+
+The Expo Go workflow does not require a paid Apple account. Later iPhone distribution through EAS cloud builds requires Apple developer enrollment.
+
+### Backend
+
+From the project folder:
 
 ```powershell
 cd backend
@@ -61,18 +118,24 @@ uv sync --frozen
 uv run python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Put the generated value in `JWT_SECRET` in `backend/.env`. Run `ipconfig`, find your Wi-Fi IPv4 address, and set `PUBLIC_URL=http://YOUR_PC_IP:8000`. Keep the default SQLite database and `STORAGE_MODE=local`.
+Put the generated value in `JWT_SECRET` inside `backend/.env`. Run `ipconfig`, find the computer's Wi-Fi IPv4 address, and set:
+
+```text
+PUBLIC_URL=http://YOUR_PC_IP:8000
+```
+
+Keep the default SQLite database and `STORAGE_MODE=local`, then start the API:
 
 ```powershell
 uv run alembic upgrade head
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Open `http://YOUR_PC_IP:8000/health` on each phone; it should return `{"status":"ok"}`. Allow Python through Windows Firewall on private networks if prompted. Guest Wi-Fi can isolate devices. Local HTTP is only for private-network development; hosted deployments use HTTPS.
+Open `http://YOUR_PC_IP:8000/health` on every test phone. It should return `{"status":"ok"}`. Allow Python through Windows Firewall on private networks if prompted.
 
-API documentation: `http://localhost:8000/docs`.
+Local API documentation is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-## Run the mobile app
+### Mobile application
 
 In a second PowerShell terminal:
 
@@ -82,21 +145,53 @@ Copy-Item .env.example .env
 npm ci
 ```
 
-Set `EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:8000` in `mobile/.env`, then run:
+Set the following value in `mobile/.env`:
+
+```text
+EXPO_PUBLIC_API_URL=http://YOUR_PC_IP:8000
+```
+
+Start Expo:
 
 ```powershell
 npm start
 ```
 
-Scan the QR code with the iPhone Camera app or Android Expo Go. Keep both terminals running. Restart Expo after changing environment values. Register separate accounts on the phones, create a competition on one, and join with its code on the other.
+Scan the QR code with the iPhone Camera app or Android Expo Go. Restart Expo after changing environment values. A Metro tunnel exposes the JavaScript bundle but not the local Python API; use the same Wi-Fi or point `EXPO_PUBLIC_API_URL` to the hosted HTTPS API.
 
-A Metro tunnel alone does not expose the Python API. Use the same Wi-Fi or deploy the API to HTTPS hosting. Never put backend secrets in the mobile environment.
+Never put backend secrets in `mobile/.env`.
 
-## Checks and API contracts
+### Convenience launchers
+
+After dependencies and local environment files are configured, the repository-root launchers can start the existing installations:
+
+```powershell
+./start-backend.ps1
+./start-mobile.ps1
+```
+
+### Desktop design preview
+
+Run:
+
+```powershell
+./start-preview.ps1
+```
+
+Then open [http://localhost:8082](http://localhost:8082). The studio renders the real mobile components inside a resizable phone frame and provides welcome, login, registration, device-size, reset, and simulated-error controls.
+
+Choose **Live app** and start the backend to use real accounts and data. The browser preview defaults to `http://localhost:8000`; override it with `EXPO_PUBLIC_WEB_API_URL` when necessary. This preview helps with layout and interaction but does not replace native camera and permission testing.
+
+Browser sessions use a rotating, host-only `HttpOnly` refresh cookie and may remain signed in for up to 30 days; access tokens stay in memory. Backend CORS allows localhost and 127.0.0.1 on port 8082 by default. Set `CORS_ORIGINS` to a JSON list only when another trusted preview origin is required.
+
+## Testing & Validation
+
+Run the complete automated verification from the project folder:
 
 ```powershell
 cd backend
 uv run pytest -q
+uv run alembic check
 uv run python -m scripts.export_openapi
 cd ../mobile
 npm run api:types
@@ -104,49 +199,85 @@ npm run typecheck
 npx expo install --check
 ```
 
-`backend/openapi.json` and `mobile/src/generated/api.ts` are generated from FastAPI. Regenerate them after API changes. Set `TEST_DATABASE_URL` to a **disposable** PostgreSQL database to run tests there; the test suite drops/recreates application tables.
+`backend/openapi.json` and `mobile/src/generated/api.ts` are generated contract files. Regenerate and commit both after API changes.
 
-See [device acceptance tests](docs/DEVICE_TESTS.md) and [deployment instructions](docs/DEPLOYMENT.md). Cloud services are not provisioned automatically.
+Set `TEST_DATABASE_URL` only to a disposable PostgreSQL database when running PostgreSQL tests. The test suite drops and recreates application tables; never point it at production Supabase.
 
-For the public course deployment, the included Render Blueprint creates both the Python API and the Expo web site. Supabase provides production PostgreSQL and private photo storage. Follow the deployment guide, then add the final public application URL and all group members' names and student numbers to this README before submission.
+Further evidence and manual checks:
 
-The [validation record](docs/VALIDATION.md) lists completed checks, remaining device/hosting work, and the SDK 54 build-tool dependency advisories. Review those before public distribution.
+- [Validation record](docs/VALIDATION.md)
+- [Physical-device acceptance tests](docs/DEVICE_TESTS.md)
+- [Course project checklist](docs/COURSE_CHECKLIST.md)
+- [Deployment and production verification](docs/DEPLOYMENT.md)
 
-## Architecture and first-release limits
+Before submission, record the final output from the current `main`, verify a fresh clone, complete the relevant device checks, and keep the deployed application aligned with the same commit.
 
-- `mobile/`: screens, reusable UI, authenticated HTTP client, camera flow, and live subscriptions.
-- `backend/`: API, database models/migrations, image validation/storage, and tests.
-- Database locks serialize submissions, joins, and ending for each event; scores come from accepted records. SQLite uses its database write lock; PostgreSQL uses per-event row locks.
-- Party schedules, active-round checks, majority voting, and combined scoring are enforced by Python on the server. The mobile countdown is presentational; server time is authoritative.
-- Battle membership, start/finish times, team switching, submission windows, and hidden-score privacy are also enforced by the server. A private battle never returns the opposing team’s photos or scores before its timer ends.
-- WebSockets authenticate through their first message and observe database revisions every two seconds. This works across workers for small groups; larger scale should use a shared event broker. Mobile polling runs every eight seconds while disconnected, with resync on foreground/reconnect.
-- Feed pages contain 20 photos. Live refresh returns to the latest page. Signed URLs last ten minutes; active event views refresh periodically.
-- Failed captures stay available during the current app session. Offline background queues are not implemented.
-- Password recovery is deferred. Logout revokes the refresh token; issued access tokens expire within 15 minutes.
-- Native refresh tokens stay in SecureStore. Web refresh tokens use a host-only, `HttpOnly` cookie through the frontend `/api` proxy, so page reloads restore the session without exposing the refresh token to JavaScript.
-- Age gating is self-attestation. Public launch needs privacy/retention policies, account deletion, moderation/reporting, age controls, and distribution review.
-- Advanced statistics, achievements, sounds, push notifications, automatic invitation links, and result-card exports are deferred.
+### Collaboration workflow
 
-## Beer points
+Create one focused branch per task from an updated `main`. Review the complete diff, run the relevant checks, push the branch, and open a pull request. Wait for the `api` and `mobile` checks and obtain a teammate review before merging. The author does not merge their own pull request without that review.
 
-The backend defines both weights in `backend/app/scoring.py`. `beer_count` remains
-the total number of drinks per photo (1–10); `pint_count` is the number of those
-that are pints, defaulting to zero for older clients. Regular quantity is
-`beer_count - pint_count`. For example, send `beer_count=5` and `pint_count=2`
-for three regular beers plus two pints: five beers and seven beer points.
-Points are derived independently from quantities; changing the central weights
-recalculates historical scores too. Party challenge bonuses remain separate
-and are included in leaderboard points, never beer counts. Equal point totals
-share a dense rank (1, 1, 2).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete workflow.
 
-Apply `uv run alembic upgrade head` before starting the updated backend.
-Migration 0006 preserves historical quantities, treating existing drinks as
-regular beers. Migration 0007 adds Battle settings and team membership without
-changing existing competitions. Photograph validation, storage, and idempotency still gate the
-single committed submission from which both statistics are derived.
+## Architecture & Technical Details
 
-To check locally, run `uv run pytest -q` in `backend` and `npm run typecheck` in
-`mobile`. Start both apps as above, create a Classic competition, capture a photo
-pair, and select three regular beers and two pints. The feed and leaderboard
-should show five beers and seven points. Submit four pints from another account:
-that player should rank above the first with four beers and eight points.
+### Repository layout
+
+- `backend/`: FastAPI application, authoritative game rules, persistence, migrations, storage integration, generated OpenAPI contract, and automated tests.
+- `mobile/`: React Native/Expo screens, camera flow, authenticated client, live subscriptions, web entry point, and generated TypeScript API types.
+- `docs/`: deployment, validation, device-testing, and course-readiness records.
+- `specs/`: reviewed task specifications and acceptance criteria.
+- `render.yaml`: Render Blueprint for the API and web services.
+
+### Authoritative backend and concurrency
+
+The backend owns timers, scores, membership, permissions, validation, Party schedules and votes, Battle privacy, and competition closure. Client-side displays are presentational.
+
+Database locks serialize submissions, joins, and finishing for each competition. SQLite uses its database write lock; PostgreSQL uses per-event row locks. Scores are derived from accepted records, and idempotency prevents retries from awarding duplicate points.
+
+WebSockets authenticate through their first message and observe database revisions every two seconds. Mobile polling runs every eight seconds while disconnected and resynchronizes after reconnecting or returning to the foreground. This approach suits small groups; larger deployments should use a shared event broker.
+
+### Authentication, privacy, and storage
+
+- Passwords are hashed with Argon2.
+- Access tokens expire within 15 minutes.
+- Native refresh tokens rotate and remain in SecureStore.
+- Web refresh tokens rotate through a host-only, `HttpOnly` cookie; access tokens remain in memory.
+- Login attempts are throttled.
+- Backend endpoints enforce member, host, spectator, voting, team, and hidden-result permissions.
+- Private photo links are signed and expire after ten minutes.
+- The Supabase secret key remains on the Python backend and is never exposed to clients.
+
+Feed pages contain 20 photos. Active views periodically refresh temporary links. Gallery access is restricted to profile pictures; competition photos must come from the camera flow.
+
+### Scoring and migrations
+
+The backend defines drink weights in `backend/app/scoring.py`. `beer_count` stores the total number of drinks in a photo, while `pint_count` stores how many are pints. Regular quantity is `beer_count - pint_count`.
+
+For example, three regular beers and two pints produce five beers and seven Jols. Party challenge bonuses are added to leaderboard points but never to beer counts. Equal point totals share a dense rank such as 1, 1, 2.
+
+Apply `uv run alembic upgrade head` before starting an updated backend:
+
+- Migration `0006` preserves historical quantities and treats older drinks as regular beers.
+- Migration `0007` adds Battle settings and team membership.
+- Migration `0008` reconciles historical Party approvals with their recorded votes.
+
+### Production deployment
+
+Render serves the Expo web export and FastAPI API. Browser HTTP traffic uses the frontend's same-origin `/api` proxy so refresh cookies remain first-party; WebSockets connect directly to the API. Supabase supplies PostgreSQL and private photo storage.
+
+Production setup, environment-variable names, persistence checks, and recovery guidance are documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Never commit provider credentials, connection strings, `.env` files, databases, uploaded photos, or private user data.
+
+## Limitations & Future Improvements
+
+Current first-release limits:
+
+- Failed captures remain available only during the current app session; there is no offline background upload queue.
+- Password recovery, passkeys, and social login are not implemented.
+- WebSocket database polling is intended for small groups rather than large-scale deployments.
+- Invitation sharing is manual; there is no public group directory or automatic invitation-link workflow.
+- Advanced statistics, achievements, sounds, push notifications, and result-card exports are deferred.
+- Age gating is self-attestation.
+
+Before a broader public launch, the project needs formal privacy and retention policies, account deletion, moderation and reporting, stronger age controls, provider backup/retention procedures, and distribution review.
+
+For the course release, prioritize stable integrated workflows, production verification, physical-device acceptance, and a rehearsed demonstration over additional last-minute features.

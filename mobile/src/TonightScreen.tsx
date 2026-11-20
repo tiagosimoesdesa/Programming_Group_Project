@@ -132,13 +132,11 @@ export default function TonightScreen({
   onOpen,
   onStart,
   onJoin,
-  onBattle,
 }: {
   nights: Competition[];
   onOpen: (id: string) => void;
   onStart: () => void;
   onJoin: () => void;
-  onBattle: () => void;
 }) {
   const [featured, ...more] = nights;
   const { height } = useWindowDimensions();
@@ -198,13 +196,6 @@ export default function TonightScreen({
           </View>
         </View>
       )}
-      <Button
-        title="Battle"
-        icon="trophy-outline"
-        onPress={onBattle}
-        secondary
-        compact
-      />
     </View>
   );
 }

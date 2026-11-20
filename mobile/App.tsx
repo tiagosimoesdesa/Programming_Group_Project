@@ -315,7 +315,6 @@ function Root() {
               onOpen={setSelected}
               onStart={() => openSheet("create")}
               onJoin={() => openSheet("join")}
-              onBattle={() => openSheet("battle-menu")}
             />
           ) : tab === "history" ? (
             <View style={{ gap: 16 }}>
@@ -682,6 +681,19 @@ function Root() {
                     <Text style={s.small}>{mode.body}</Text>
                   </Pressable>
                 ))}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSheet("battle-menu")}
+                  style={[s.card, { padding: 16, gap: 5 }]}
+                >
+                  <View style={s.between}>
+                    <Text style={s.h3}>Battle</Text>
+                    <Icon name="chevron-forward" color={colors.muted} />
+                  </View>
+                  <Text style={s.small}>
+                    Two teams compete for the most Jols before the timer ends.
+                  </Text>
+                </Pressable>
               </View>
             )}
             {sheet !== "battle-menu" && (

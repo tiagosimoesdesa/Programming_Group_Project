@@ -16,6 +16,8 @@ import { APP_NAME } from "./Brand";
 import NightBackdrop from "./NightBackdrop";
 import { Button, colors, ErrorText, Icon, s } from "./ui";
 
+const regularBeerGlass = require("../assets/super-bock-regular.png");
+
 export type Capture = {
   rear: string;
   front: string;
@@ -282,11 +284,14 @@ export default function CameraScreen({
                         >
                           🍺
                         </Text>
-                      ) : null}
-                      {/* Awaiting the supplied original photograph as a local transparent
-                        asset: ../assets/super-bock-regular.png. Do not substitute
-                        the different photograph in beer-glass.png. Render here with
-                        resizeMode="contain", width="100%", height=112. */}
+                      ) : (
+                        <Image
+                          source={regularBeerGlass}
+                          resizeMode="contain"
+                          style={{ width: 64, height: 96 }}
+                          aria-hidden
+                        />
+                      )}
                     </View>
                     <Text
                       style={{

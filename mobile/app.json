@@ -7,6 +7,12 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#101110",
+    "web": {
+      "themeColor": "#101110",
+      "backgroundColor": "#101110",
+      "barStyle": "black-translucent"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.beerreal.app",

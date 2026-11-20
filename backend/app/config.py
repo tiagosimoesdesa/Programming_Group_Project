@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     supabase_bucket: str = "beerreal"
     cors_origins: list[str] = ["http://localhost:8082", "http://127.0.0.1:8082"]
+    password_hash_concurrency: int = 2
 
     @property
     def supabase_admin_key(self) -> str:
@@ -26,3 +27,5 @@ if settings.storage_mode not in {"local", "supabase"}:
     raise RuntimeError("STORAGE_MODE must be local or supabase")
 if settings.storage_mode == "supabase" and not (settings.supabase_url and settings.supabase_admin_key):
     raise RuntimeError("Supabase storage credentials are required")
+if settings.password_hash_concurrency < 1:
+    raise RuntimeError("PASSWORD_HASH_CONCURRENCY must be at least 1")

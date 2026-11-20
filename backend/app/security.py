@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 import time
+from threading import BoundedSemaphore
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
@@ -14,6 +15,7 @@ from .models import RefreshSession, User
 
 hasher = PasswordHasher()
 dummy_hash = hasher.hash(secrets.token_urlsafe(20))
+password_slots = BoundedSemaphore(settings.password_hash_concurrency)
 bearer = HTTPBearer(auto_error=False)
 REFRESH_SECONDS = 30 * 86400
 
@@ -63,6 +65,12 @@ def rotate(db: Session, token: str):
 
 def password_matches(password, encoded):
     try:
-        return hasher.verify(encoded, password)
+        with password_slots:
+            return hasher.verify(encoded, password)
     except VerificationError:
         return False
+
+
+def hash_password(password: str):
+    with password_slots:
+        return hasher.hash(password)

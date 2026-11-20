@@ -203,6 +203,15 @@ npx expo install --check
 
 Set `TEST_DATABASE_URL` only to a disposable PostgreSQL database when running PostgreSQL tests. The test suite drops and recreates application tables; never point it at production Supabase.
 
+To exercise a running local backend with 25 authenticated users joining, uploading photos, refreshing the feed, and receiving WebSocket updates at the same time, run:
+
+```powershell
+cd backend
+uv run python -m scripts.load_test --users 25 --read-rounds 3
+```
+
+The load test refuses remote URLs by default so it cannot accidentally create test accounts or photos in production. It reports failures and p50, p95, and maximum latency for each operation.
+
 Further evidence and manual checks:
 
 - [Validation record](docs/VALIDATION.md)

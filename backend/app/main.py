@@ -1,5 +1,6 @@
 import asyncio
 import secrets
+import threading
 import time
 import uuid
 from contextlib import suppress
@@ -15,7 +16,7 @@ from . import storage
 from .db import Session, get_db
 from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
 from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
-from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hasher, issue_tokens, password_matches, rotate
+from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
 app = FastAPI(title="BEERREAL", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
@@ -42,6 +43,38 @@ PARTY_PROMPTS = [
     ("height", "Line up a group by height"),
     ("letter", "Form a letter using people"),
 ]
+LIVE_REVISION_CACHE_SECONDS = 1.5
+_live_revision_cache: dict[str, tuple[float, str]] = {}
+_live_revision_locks: dict[str, threading.Lock] = {}
+_live_revision_guard = threading.Lock()
+
+
+def _read_live_revision(event_id: str):
+    with Session() as db:
+        event = db.get(Competition, event_id)
+        if not event:
+            raise HTTPException(404, "Competition not found")
+        party_round = active_party_round(db, event)
+        return f"{event.revision}:{party_round.sequence if party_round else -1}"
+
+
+def _cached_live_revision(event_id: str):
+    with _live_revision_guard:
+        lock = _live_revision_locks.setdefault(event_id, threading.Lock())
+    with lock:
+        now = time.monotonic()
+        with _live_revision_guard:
+            cached = _live_revision_cache.get(event_id)
+        if cached and cached[0] > now:
+            return cached[1]
+        revision = _read_live_revision(event_id)
+        with _live_revision_guard:
+            _live_revision_cache[event_id] = (now + LIVE_REVISION_CACHE_SECONDS, revision)
+            if len(_live_revision_cache) > 256:
+                expired = [key for key, value in _live_revision_cache.items() if value[0] <= now]
+                for key in expired:
+                    _live_revision_cache.pop(key, None)
+        return revision
 
 
 def profile(user):
@@ -139,7 +172,7 @@ def health(db: DbSession = Depends(get_db)):
 @app.post("/auth/register", response_model=Tokens, status_code=201)
 def register(body: Register, request: Request, db: DbSession = Depends(get_db)):
     throttle(db, request, body.username)
-    user = User(username=body.username, password_hash=hasher.hash(body.password))
+    user = User(username=body.username, password_hash=hash_password(body.password))
     db.add(user)
     try:
         db.flush()
@@ -299,9 +332,16 @@ def join(body: JoinCompetition, user: User = Depends(current_user), db: DbSessio
     return event_out(db, event, user.id)
 
 
-def photo_out(db, row, viewer_id=None):
+_REACTIONS_UNSET = object()
+
+
+def photo_out(db, row, viewer_id=None, reactions=None, my_reaction=_REACTIONS_UNSET):
     party_round = db.get(PartyRound, row.party_round_id) if row.party_round_id else None
-    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at, "beer_count": row.beer_count if row.kind == "drink" else 0, "pint_count": row.pint_count if row.kind == "drink" else 0, "beer_points": beer_points(row.beer_count, row.pint_count) if row.kind == "drink" else 0, "reactions": dict(db.execute(select(Reaction.emoji, func.count()).where(Reaction.submission_id == row.id).group_by(Reaction.emoji)).all()), "my_reaction": db.scalar(select(Reaction.emoji).where(Reaction.submission_id == row.id, Reaction.user_id == viewer_id)) if viewer_id else None, "kind": row.kind, "challenge_prompt": party_round.prompt if party_round else None}
+    if reactions is None:
+        reactions = dict(db.execute(select(Reaction.emoji, func.count()).where(Reaction.submission_id == row.id).group_by(Reaction.emoji)).all())
+    if my_reaction is _REACTIONS_UNSET:
+        my_reaction = db.scalar(select(Reaction.emoji).where(Reaction.submission_id == row.id, Reaction.user_id == viewer_id)) if viewer_id else None
+    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at, "beer_count": row.beer_count if row.kind == "drink" else 0, "pint_count": row.pint_count if row.kind == "drink" else 0, "beer_points": beer_points(row.beer_count, row.pint_count) if row.kind == "drink" else 0, "reactions": reactions, "my_reaction": my_reaction, "kind": row.kind, "challenge_prompt": party_round.prompt if party_round else None}
 
 
 def visible_submissions(event_id):
@@ -460,6 +500,7 @@ def leave_battle(event_id: str, user: User = Depends(current_user), db: DbSessio
 def detail(event_id: str, before: str | None = None, player: str | None = None, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = member_event(db, event_id, user.id)
     rows = score_rows(db, event_id)
+    storage.prime_photo_urls(person.avatar for person, *_ in rows)
     my_membership = db.get(Membership, (event_id, user.id))
     battle = battle_state(db, event, user.id) if event.mode == "battle" else None
     private_active_battle = bool(battle and battle["status"] == "active" and not battle["points_visible"])
@@ -482,6 +523,21 @@ def detail(event_id: str, before: str | None = None, player: str | None = None, 
             raise HTTPException(400, "Invalid feed cursor")
         query = query.where((Submission.created_at < cursor.created_at) | ((Submission.created_at == cursor.created_at) & (Submission.id < cursor.id)))
     photos = list(db.scalars(query.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(21)))
+    storage.prime_photo_urls(key for photo in photos for key in (photo.rear, photo.front))
+    photo_ids = [photo.id for photo in photos]
+    reaction_counts = {photo_id: {} for photo_id in photo_ids}
+    my_reactions = {}
+    if photo_ids:
+        for photo_id, emoji, count in db.execute(
+            select(Reaction.submission_id, Reaction.emoji, func.count())
+            .where(Reaction.submission_id.in_(photo_ids))
+            .group_by(Reaction.submission_id, Reaction.emoji)
+        ):
+            reaction_counts[photo_id][emoji] = count
+        my_reactions = dict(db.execute(
+            select(Reaction.submission_id, Reaction.emoji)
+            .where(Reaction.submission_id.in_(photo_ids), Reaction.user_id == user.id)
+        ).all())
     recap = []
     if effective_ended_at(event):
         # Night moments bookends drink check-ins independently of feed pagination.
@@ -492,7 +548,7 @@ def detail(event_id: str, before: str | None = None, player: str | None = None, 
             if first and last and first.id == last.id:
                 last = None
             recap.append({"user": profile(person), "first": photo_out(db, first) if first else None, "last": photo_out(db, last) if last else None})
-    return {"competition": event_out(db, event, user.id), "standings": standings, "feed": [photo_out(db, row, user.id) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap, "battle": battle}
+    return {"competition": event_out(db, event, user.id), "standings": standings, "feed": [photo_out(db, row, user.id, reaction_counts[row.id], my_reactions.get(row.id)) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap, "battle": battle}
 
 
 @app.post("/competitions/{event_id}/submissions", response_model=PhotoOut, status_code=201)
@@ -845,14 +901,13 @@ async def live(socket: WebSocket, event_id: str):
         if not isinstance(message, dict):
             raise ValueError("Expected an authentication message")
         claims = decode(message.get("token", ""), "access")
-        def get_revision():
+        def authorize():
             with Session() as db:
-                event = member_event(db, event_id, claims["sub"])
-                party_round = active_party_round(db, event)
-                return f"{event.revision}:{party_round.sequence if party_round else -1}"
+                member_event(db, event_id, claims["sub"])
+        await asyncio.to_thread(authorize)
         previous = None
         while int(time.time()) < claims["exp"]:
-            revision = await asyncio.to_thread(get_revision)
+            revision = await asyncio.to_thread(_cached_live_revision, event_id)
             if revision != previous:
                 await socket.send_json({"type": "changed", "revision": revision})
                 previous = revision

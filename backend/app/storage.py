@@ -1,4 +1,6 @@
 import io
+import threading
+import time
 import warnings
 from pathlib import Path
 from urllib.parse import quote
@@ -10,6 +12,11 @@ from .security import encode
 
 MAX_BYTES = 5 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 20_000_000
+SIGNED_URL_SECONDS = 600
+SIGNED_URL_CACHE_SECONDS = 540
+_storage_client = httpx.Client()
+_signed_urls: dict[str, tuple[float, str]] = {}
+_signed_urls_lock = threading.Lock()
 
 
 def validate_image(upload: UploadFile) -> bytes:
@@ -51,38 +58,77 @@ def local_path(key):
 
 
 def put(key: str, data: bytes):
+    with _signed_urls_lock:
+        _signed_urls.pop(key, None)
     if settings.storage_mode == "local":
         path = local_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     else:
         try:
-            r = httpx.post(f"{settings.supabase_url}/storage/v1/object/{settings.supabase_bucket}/{key}", headers={**headers(), "Content-Type": "image/jpeg"}, content=data, timeout=30)
+            r = _storage_client.post(f"{settings.supabase_url}/storage/v1/object/{settings.supabase_bucket}/{key}", headers={**headers(), "Content-Type": "image/jpeg"}, content=data, timeout=30)
             r.raise_for_status()
         except httpx.HTTPError:
             raise HTTPException(503, "Photo storage is unavailable. Your capture can be retried.")
 
 
 def remove(key: str):
+    with _signed_urls_lock:
+        _signed_urls.pop(key, None)
     if settings.storage_mode == "local":
         local_path(key).unlink(missing_ok=True)
     else:
         try:
-            httpx.request("DELETE", f"{settings.supabase_url}/storage/v1/object/{settings.supabase_bucket}", headers=headers(), json={"prefixes": [key]}, timeout=15).raise_for_status()
+            _storage_client.request("DELETE", f"{settings.supabase_url}/storage/v1/object/{settings.supabase_bucket}", headers=headers(), json={"prefixes": [key]}, timeout=15).raise_for_status()
         except httpx.HTTPError:
             import logging
             logging.getLogger(__name__).warning("Could not clean up storage object %s", key)
+
+
+def prime_photo_urls(keys):
+    unique = list(dict.fromkeys(key for key in keys if key))
+    if settings.storage_mode == "local" or not unique:
+        return
+    now = time.monotonic()
+    with _signed_urls_lock:
+        if len(_signed_urls) > 1024:
+            expired = [key for key, value in _signed_urls.items() if value[0] <= now]
+            for key in expired:
+                _signed_urls.pop(key, None)
+        missing = [key for key in unique if key not in _signed_urls or _signed_urls[key][0] <= now]
+        if not missing:
+            return
+        try:
+            response = _storage_client.post(
+                f"{settings.supabase_url}/storage/v1/object/sign/{settings.supabase_bucket}",
+                headers=headers(),
+                json={"expiresIn": SIGNED_URL_SECONDS, "paths": missing},
+                timeout=15,
+            )
+            response.raise_for_status()
+            results = response.json()
+            if not isinstance(results, list) or len(results) != len(missing):
+                raise ValueError("Unexpected signed URL response")
+            expires = now + SIGNED_URL_CACHE_SECONDS
+            for index, item in enumerate(results):
+                key = item.get("path") or missing[index]
+                signed = item.get("signedURL")
+                if item.get("error") or not signed:
+                    raise ValueError("A photo URL could not be signed")
+                _signed_urls[key] = (expires, f"{settings.supabase_url}/storage/v1{signed}")
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            raise HTTPException(503, "Photo storage is temporarily unavailable")
 
 
 def photo_url(key: str | None):
     if not key:
         return None
     if settings.storage_mode == "local":
-        token = encode(key, "photo", 600)
+        token = encode(key, "photo", SIGNED_URL_SECONDS)
         return f"{settings.public_url}/media?token={quote(token)}"
+    prime_photo_urls([key])
     try:
-        r = httpx.post(f"{settings.supabase_url}/storage/v1/object/sign/{settings.supabase_bucket}/{key}", headers=headers(), json={"expiresIn": 600}, timeout=15)
-        r.raise_for_status()
-        return f"{settings.supabase_url}/storage/v1{r.json()['signedURL']}"
-    except (httpx.HTTPError, KeyError):
+        with _signed_urls_lock:
+            return _signed_urls[key][1]
+    except KeyError:
         raise HTTPException(503, "Photo storage is temporarily unavailable")

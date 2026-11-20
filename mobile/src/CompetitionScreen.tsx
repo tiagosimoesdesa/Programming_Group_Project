@@ -5,6 +5,7 @@ import {
   BackHandler,
   Image,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { APP_NAME } from "./Brand";
 import { post, Profile, Photo } from "./api";
 import {
@@ -691,7 +693,10 @@ export default function CompetitionScreen({
         onRequestClose={() => setExpanded(null)}
         animationType="fade"
       >
-        <View style={[s.root, { padding: 18, paddingTop: 55, gap: 14 }]}>
+        <SafeAreaView
+          edges={Platform.OS === "web" ? undefined : []}
+          style={[s.root, { padding: 18, paddingTop: 55, gap: 14 }]}
+        >
           <NightBackdrop />
           <Button
             title="Close photo"
@@ -718,7 +723,7 @@ export default function CompetitionScreen({
               />
             </>
           )}
-        </View>
+        </SafeAreaView>
       </Modal>
       {canCapture && (
         <View

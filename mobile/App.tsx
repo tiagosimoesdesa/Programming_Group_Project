@@ -13,7 +13,11 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
@@ -68,7 +72,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <SafeAreaView style={s.root}>
+      <SafeAreaView
+        mode={Platform.OS === "web" ? "margin" : "padding"}
+        style={s.root}
+      >
         <Root />
       </SafeAreaView>
     </SafeAreaProvider>
@@ -76,6 +83,7 @@ export default function App() {
 }
 
 function Root() {
+  const insets = useSafeAreaInsets();
   const [me, setMe] = useState<Profile | null>(null);
   const [events, setEvents] = useState<Competition[]>([]);
   const [boot, setBoot] = useState(true);
@@ -453,11 +461,18 @@ function Root() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{
-            flex: 1,
-            backgroundColor: "#000000BB",
-            justifyContent: "flex-end",
-          }}
+          style={[
+            {
+              flex: 1,
+              backgroundColor: "#000000BB",
+              justifyContent: "flex-end",
+            },
+            Platform.OS === "web" && {
+              paddingTop: insets.top,
+              paddingLeft: insets.left,
+              paddingRight: insets.right,
+            },
+          ]}
         >
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -470,7 +485,8 @@ function Root() {
             contentContainerStyle={{
               flexGrow: 0,
               padding: 28,
-              paddingBottom: 44,
+              paddingBottom:
+                Platform.OS === "web" ? Math.max(44, insets.bottom) : 44,
               gap: 16,
             }}
           >

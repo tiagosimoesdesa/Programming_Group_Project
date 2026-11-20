@@ -5,7 +5,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Modal, ScrollView, Text, View } from "react-native";
+import { AppState, Modal, Platform, ScrollView, Text } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Camera, type PermissionResponse, PermissionStatus } from "expo-camera";
 import { Button, colors, Icon, s } from "./ui";
 
@@ -93,7 +94,8 @@ export function CameraAccessProvider({
       {children}
       {showSetup && permission?.status === PermissionStatus.UNDETERMINED && (
         <Modal transparent visible onRequestClose={dismissSetup}>
-          <View
+          <SafeAreaView
+            edges={Platform.OS === "web" ? undefined : []}
             style={{
               flex: 1,
               backgroundColor: "#000000BB",
@@ -135,7 +137,7 @@ export function CameraAccessProvider({
                 onPress={dismissSetup}
               />
             </ScrollView>
-          </View>
+          </SafeAreaView>
         </Modal>
       )}
     </CameraAccessContext.Provider>

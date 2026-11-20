@@ -4,15 +4,17 @@ import {
   AppState,
   Image,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Text,
   View,
 } from "react-native";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { CameraView, PermissionStatus } from "expo-camera";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as Crypto from "expo-crypto";
 import { APP_NAME } from "./Brand";
+import { useCameraAccess } from "./CameraAccess";
 import NightBackdrop from "./NightBackdrop";
 import { Button, colors, ErrorText, Icon, s } from "./ui";
 
@@ -44,7 +46,7 @@ export default function CameraScreen({
   error: string;
   countBeers?: boolean;
 }) {
-  const [permission, ask, getPermission] = useCameraPermissions();
+  const { permission, requesting, requestPermission } = useCameraAccess();
   const [active, setActive] = useState(AppState.currentState === "active");
   const camera = useRef<CameraView>(null);
   const [rear, setRear] = useState<string | null>(null);
@@ -52,6 +54,8 @@ export default function CameraScreen({
   const [ready, setReady] = useState(false);
   const [localError, setLocalError] = useState("");
   const facing = rear ? "front" : "back";
+  const browserDenied =
+    Platform.OS === "web" && permission?.status === PermissionStatus.DENIED;
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   function updateCounts(pints: boolean, reset = false) {
@@ -69,10 +73,21 @@ export default function CameraScreen({
     const listener = AppState.addEventListener("change", (state) => {
       setActive(state === "active");
       setReady(false);
-      if (state === "active") void getPermission();
     });
     return () => listener.remove();
-  }, [getPermission]);
+  }, []);
+  useEffect(() => {
+    if (!permission?.granted) setReady(false);
+  }, [permission?.granted]);
+  async function enableCamera() {
+    setLocalError("");
+    try {
+      if (permission?.canAskAgain) await requestPermission();
+      else await Linking.openSettings();
+    } catch {
+      setLocalError("Check camera access in your settings and try again.");
+    }
+  }
   async function capture() {
     if (!camera.current || taking || !ready) return;
     setTaking(true);
@@ -180,14 +195,22 @@ export default function CameraScreen({
                 {APP_NAME} uses fresh camera photos. Your gallery is never used
                 for check-ins.
               </Text>
+              {browserDenied && (
+                <Text style={s.body}>
+                  If camera access is blocked, allow it in your browser’s site
+                  settings and try again.
+                </Text>
+              )}
               <Button
                 title={
-                  permission.canAskAgain ? "Allow camera" : "Open settings"
+                  browserDenied
+                    ? "Try again"
+                    : permission.canAskAgain
+                      ? "Allow camera"
+                      : "Open settings"
                 }
-                onPress={() => {
-                  if (permission.canAskAgain) void ask();
-                  else void Linking.openSettings();
-                }}
+                loading={requesting}
+                onPress={() => void enableCamera()}
               />
             </View>
           ) : !active ? null : (
@@ -386,7 +409,7 @@ export default function CameraScreen({
           <Button
             title={rear ? "Take selfie" : "Take drink photo"}
             icon="camera-outline"
-            disabled={!permission?.granted || !ready}
+            disabled={!active || !permission?.granted || !ready}
             loading={taking}
             onPress={() => void capture()}
           />

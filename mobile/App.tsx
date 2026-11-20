@@ -35,6 +35,7 @@ import NightBackdrop from "./src/NightBackdrop";
 import TonightScreen, { NightListItem } from "./src/TonightScreen";
 import CompetitionScreen from "./src/CompetitionScreen";
 import { Capture } from "./src/CameraScreen";
+import { CameraAccessProvider } from "./src/CameraAccess";
 import {
   Avatar,
   Button,
@@ -99,11 +100,13 @@ function Root() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pending, setPending] = useState<Record<string, Capture | null>>({});
-  const load = useCallback(async () => {
+  const [offerCameraSetup, setOfferCameraSetup] = useState(false);
+  const load = useCallback(async (signedIn = false) => {
     const [person, nights] = await Promise.all([
       request<Profile>("/me"),
       request<Competition[]>("/competitions"),
     ]);
+    if (signedIn) setOfferCameraSetup(true);
     setMe(person);
     setEvents(nights);
     setError("");
@@ -127,6 +130,7 @@ function Root() {
   }, [load]);
   useEffect(() => {
     onAuthLost(() => {
+      setOfferCameraSetup(false);
       setMe(null);
       setSelected(null);
       setEvents([]);
@@ -239,6 +243,7 @@ function Root() {
             setBusy(true);
             logout()
               .then(() => {
+                setOfferCameraSetup(false);
                 setMe(null);
                 setSelected(null);
                 setPending({});
@@ -274,26 +279,24 @@ function Root() {
         <Button title="Reconnect" onPress={() => void bootUp()} />
       </View>
     );
-  if (!me) return <AuthScreen onLogin={load} />;
-  if (selected)
-    return (
-      <CompetitionScreen
-        key={selected}
-        id={selected}
-        me={me}
-        onBack={() => {
-          setSelected(null);
-          void reload();
-        }}
-        pending={pending[selected] ?? null}
-        onPending={(capture) =>
-          setPending((old) => ({ ...old, [selected]: capture }))
-        }
-      />
-    );
+  if (!me) return <AuthScreen onLogin={() => load(true)} />;
   const active = events.filter((e) => !e.ended_at);
   const history = events.filter((e) => e.ended_at);
-  return (
+  const content = selected ? (
+    <CompetitionScreen
+      key={selected}
+      id={selected}
+      me={me}
+      onBack={() => {
+        setSelected(null);
+        void reload();
+      }}
+      pending={pending[selected] ?? null}
+      onPending={(capture) =>
+        setPending((old) => ({ ...old, [selected]: capture }))
+      }
+    />
+  ) : (
     <View style={s.root}>
       <NightBackdrop bubbles={tab === "home"} />
       <ScrollView
@@ -730,5 +733,10 @@ function Root() {
         </KeyboardAvoidingView>
       </Modal>
     </View>
+  );
+  return (
+    <CameraAccessProvider key={me.id} offerSetup={offerCameraSetup}>
+      {content}
+    </CameraAccessProvider>
   );
 }

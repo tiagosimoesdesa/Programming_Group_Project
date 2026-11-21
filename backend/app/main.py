@@ -140,6 +140,10 @@ def event_out(db, event, viewer_id=None, *, now=None, participants=None):
     role = membership.role if membership else "player"
     if participants is None:
         participants = db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player"))
+    return serialize_event(event, role, participants, now)
+
+
+def serialize_event(event, role, participants, now=None):
     return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": effective_ended_at(event, now), "revision": event.revision, "participants": participants, "mode": event.mode, "party_started_at": event.party_started_at, "battle_started_at": event.battle_started_at}
 
 
@@ -343,8 +347,23 @@ def store_avatar(photo, user, db):
 
 @app.get("/competitions", response_model=list[EventOut])
 def events(user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    rows = db.scalars(select(Competition).join(Membership).where(Membership.user_id == user.id).order_by(Competition.created_at.desc(), Competition.id))
-    return [event_out(db, row, user.id) for row in rows]
+    # The user's role and player count belong in the list query. Looking each
+    # up separately adds two database round trips per night in their history.
+    participants = (
+        select(func.count()).select_from(Membership)
+        .where(Membership.competition_id == Competition.id, Membership.role == "player")
+        .correlate(Competition).scalar_subquery()
+    )
+    rows = db.execute(
+        select(Competition, Membership.role, participants).join(Membership)
+        .where(Membership.user_id == user.id)
+        .order_by(Competition.created_at.desc(), Competition.id)
+    ).all()
+    # FastAPI validates the response after the sync handler returns. Release
+    # the connection here so queued validation cannot tie up the whole pool.
+    db.commit()
+    now = int(time.time())
+    return [serialize_event(event, role, count, now) for event, role, count in rows]
 
 
 @app.post("/competitions", response_model=EventOut, status_code=201)

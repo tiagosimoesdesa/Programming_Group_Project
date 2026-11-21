@@ -212,6 +212,8 @@ uv run python -m scripts.load_test --base-url http://127.0.0.1:8000 --users 40 -
 
 The load test refuses remote URLs by default so it cannot accidentally create test accounts or photos in production. It reports failures and p50, p95, and maximum latency for each operation.
 
+The [Phase 11 capacity report](docs/VALIDATION.md#phase-11-capacity-report--21-november-2026) records the PostgreSQL ramp, synchronized spikes, and integrity checks. The repeatable runner provisions its own loopback API and disposable database and writes per-scenario HTTP, CPU, memory, SQL, and connection-pool measurements to JSON.
+
 Further evidence and manual checks:
 
 - [Validation record](docs/VALIDATION.md)

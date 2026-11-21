@@ -67,6 +67,17 @@ async function raw(path: string, options: RequestInit = {}) {
   }
 }
 
+function sessionRequest(path: string, options: RequestInit) {
+  if (Platform.OS === "web" && globalThis.navigator?.locks) {
+    // Tabs share an HttpOnly cookie. Let each response update it before the
+    // next tab sends a request that reads, rotates, or replaces it.
+    return navigator.locks.request("beerreal.web-session", () =>
+      raw(path, options),
+    );
+  }
+  return raw(path, options);
+}
+
 async function save(value: Session | null) {
   // Browser refresh tokens remain in an HttpOnly cookie, never in JavaScript storage.
   if (Platform.OS === "web") {
@@ -82,7 +93,7 @@ async function save(value: Session | null) {
 export async function restoreSession() {
   if (Platform.OS === "web") {
     try {
-      const value: AccessToken = await raw("/auth/web/refresh", {
+      const value: AccessToken = await sessionRequest("/auth/web/refresh", {
         method: "POST",
       });
       await save(value);
@@ -113,7 +124,7 @@ async function refresh() {
       try {
         const result: Session =
           Platform.OS === "web"
-            ? await raw("/auth/web/refresh", { method: "POST" })
+            ? await sessionRequest("/auth/web/refresh", { method: "POST" })
             : await raw("/auth/refresh", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -173,7 +184,7 @@ export async function authenticate(
   register: boolean,
 ) {
   const prefix = Platform.OS === "web" ? "/auth/web" : "/auth";
-  const result: Session = await raw(
+  const result: Session = await sessionRequest(
     `${prefix}/${register ? "register" : "login"}`,
     {
       method: "POST",
@@ -190,7 +201,7 @@ export async function authenticate(
 
 export async function logout() {
   if (Platform.OS === "web") {
-    await raw("/auth/web/logout", { method: "POST" });
+    await sessionRequest("/auth/web/logout", { method: "POST" });
   } else if (tokens?.refresh_token) {
     await raw("/auth/logout", {
       method: "POST",

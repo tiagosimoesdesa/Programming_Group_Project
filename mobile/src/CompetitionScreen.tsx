@@ -9,7 +9,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  Share,
   Text,
   View,
 } from "react-native";
@@ -36,6 +35,7 @@ import NightBackdrop from "./NightBackdrop";
 import SocialPanel from "./SocialPanel";
 import PartyPanel from "./PartyPanel";
 import BattlePanel from "./BattlePanel";
+import { shareInvitation } from "./shareInvitation";
 
 type LiveTab = "feed" | "ranks" | "social" | "party" | "battle";
 type CompetitionTab = LiveTab | "podium";
@@ -80,11 +80,15 @@ export default function CompetitionScreen({
     roundId: string;
     prompt: string;
   } | null>(null);
-  const [partyPending, setPartyPending] = useState<Capture | null>(null);
+  const [partyPending, setPartyPending] = useState<{
+    roundId: string;
+    photo: Capture;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [invitationCopied, setInvitationCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [battleClock, setBattleClock] = useState(0);
+  const [battleClock, setBattleClock] = useState<number | null>(null);
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const ended = !!detail?.competition.ended_at;
   const isBattle = detail?.competition.mode === "battle" && !!detail.battle;
@@ -225,9 +229,11 @@ export default function CompetitionScreen({
     return (
       <CameraScreen
         name={partyCapture.prompt}
-        pending={partyPending}
+        pending={partyPending?.photo ?? null}
         onPending={(value) => {
-          setPartyPending(value);
+          setPartyPending(
+            value ? { roundId: partyCapture.roundId, photo: value } : null,
+          );
           setActionError("");
         }}
         onSubmit={(value) => void submitParty(value)}
@@ -285,14 +291,15 @@ export default function CompetitionScreen({
     !ended &&
     event.my_role !== "spectator" &&
     (!isBattle || !event.battle_started_at);
+  const battleNow = battleClock ?? detail.battle?.server_time ?? 0;
   const battleRemaining = Math.max(
     0,
-    (detail.battle?.ends_at ?? battleClock) - battleClock,
+    (detail.battle?.ends_at ?? battleNow) - battleNow,
   );
   const battleWarning =
     detail.battle?.status === "active" &&
     detail.battle.warning_at !== null &&
-    battleClock >= detail.battle.warning_at;
+    battleNow >= detail.battle.warning_at;
   return (
     <View style={s.root}>
       <NightBackdrop bubbles={tab === "podium"} />
@@ -341,9 +348,13 @@ export default function CompetitionScreen({
               accessibilityLabel="Share invitation code"
               style={s.iconButton}
               onPress={() => {
-                Share.share({
-                  message: `Join “${event.name}” on ${APP_NAME}. Invitation code: ${event.code}`,
-                }).catch((e) => setActionError(e.message));
+                setActionError("");
+                setInvitationCopied(false);
+                shareInvitation(
+                  `Join “${event.name}” on ${APP_NAME}. Invitation code: ${event.code}`,
+                )
+                  .then(setInvitationCopied)
+                  .catch((e) => setActionError(e.message));
               }}
             >
               <Icon name="share-outline" />
@@ -390,7 +401,14 @@ export default function CompetitionScreen({
                   {event.name}
                 </Text>
                 {canShare && (
-                  <Text style={s.body}>Invite code · {event.code}</Text>
+                  <Text selectable style={s.body}>
+                    Invite code · {event.code}
+                  </Text>
+                )}
+                {canShare && invitationCopied && (
+                  <Text accessibilityLiveRegion="polite" style={s.small}>
+                    Invitation copied.
+                  </Text>
                 )}
                 {!ended && event.my_role === "spectator" && (
                   <Text style={s.body}>Watching with friends</Text>
@@ -470,6 +488,8 @@ export default function CompetitionScreen({
               detail={detail}
               me={me}
               refresh={refresh}
+              remaining={battleRemaining}
+              warning={battleWarning}
               onLeft={onBack}
               onError={setActionError}
             />
@@ -496,6 +516,9 @@ export default function CompetitionScreen({
             me={me.id}
             onCapture={(roundId, prompt) => {
               setActionError("");
+              setPartyPending((saved) =>
+                saved?.roundId === roundId ? saved : null,
+              );
               setPartyCapture({ roundId, prompt });
             }}
           />

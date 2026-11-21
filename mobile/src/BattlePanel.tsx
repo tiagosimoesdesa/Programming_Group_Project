@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { Detail, Profile } from "./api";
 import { post, request } from "./api";
@@ -21,40 +21,22 @@ export default function BattlePanel({
   detail,
   me,
   refresh,
+  remaining,
+  warning,
   onLeft,
   onError,
 }: {
   detail: Detail;
   me: Profile;
   refresh: () => Promise<void>;
+  remaining: number;
+  warning: boolean;
   onLeft: () => void;
   onError: (message: string) => void;
 }) {
   const battle = detail.battle!;
   const event = detail.competition;
   const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(battle.server_time);
-  const expired = useRef(false);
-  useEffect(() => {
-    setNow(battle.server_time);
-    expired.current = false;
-    if (battle.status !== "active") return;
-    const offset = battle.server_time - Math.floor(Date.now() / 1000);
-    const timer = setInterval(() => {
-      const next = Math.floor(Date.now() / 1000) + offset;
-      setNow(next);
-      if (battle.ends_at && next >= battle.ends_at && !expired.current) {
-        expired.current = true;
-        void refresh();
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [battle.server_time, battle.status, battle.ends_at, refresh]);
-  const remaining = Math.max(0, (battle.ends_at ?? now) - now);
-  const warning =
-    battle.status === "active" &&
-    battle.warning_at !== null &&
-    now >= battle.warning_at;
   const winner = useMemo(
     () => battle.teams.find((team) => team.key === battle.winner),
     [battle],

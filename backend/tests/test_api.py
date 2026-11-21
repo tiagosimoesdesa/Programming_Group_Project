@@ -8,9 +8,9 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import event as sqlalchemy_event, select
 from app import storage
-from app.db import Session
+from app.db import Session, engine
 from app.main import UPLOAD_CONCURRENCY, app
 from app.models import Competition, PartyRound, Submission
 from app.security import encode
@@ -351,6 +351,42 @@ def test_reactions_and_player_filter(client):
     filtered = client.get(path, headers=host, params={"player": guest_photo["user"]["id"]}).json()
     assert [p["id"] for p in filtered["feed"]] == [guest_photo["id"]]
     assert all(p["count"] == 1 for p in filtered["standings"])
+
+
+def test_competition_history_batches_roles_and_player_counts(client):
+    host, _ = account(client)
+    guest, _ = account(client, "history_guest")
+    nights = [event(client, host) for _ in range(6)]
+    by_id = {night["id"]: night for night in nights}
+    for night in nights[:3]:
+        assert client.post("/competitions/join", headers=guest, json={"code": night["code"]}).status_code == 200
+    watched_id = nights[3]["id"]
+    invitation = client.post(f"/competitions/{watched_id}/spectator-invite", headers=host).json()
+    assert client.post("/competitions/join", headers=guest, json={"code": invitation["spectator_code"]}).status_code == 200
+    assert client.post(f"/competitions/{watched_id}/end", headers=host).status_code == 200
+
+    queries = []
+
+    def record_select(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            queries.append(statement)
+
+    sqlalchemy_event.listen(engine, "before_cursor_execute", record_select)
+    try:
+        response = client.get("/competitions", headers=guest)
+    finally:
+        sqlalchemy_event.remove(engine, "before_cursor_execute", record_select)
+
+    assert response.status_code == 200
+    result = response.json()
+    visible = nights[:4]
+    assert [night["id"] for night in result] == [night["id"] for night in sorted(visible, key=lambda night: (-night["created_at"], night["id"]))]
+    for night in result:
+        if night["id"] == watched_id:
+            assert night["my_role"] == "spectator" and night["code"] == "" and night["participants"] == 1 and night["ended_at"]
+        else:
+            assert night["my_role"] == "player" and night["code"] == by_id[night["id"]]["code"] and night["participants"] == 2
+    assert len(queries) <= 2
 
 
 def test_challenges_and_spectators(client):

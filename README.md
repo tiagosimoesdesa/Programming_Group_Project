@@ -203,11 +203,11 @@ npx expo install --check
 
 Set `TEST_DATABASE_URL` only to a disposable PostgreSQL database when running PostgreSQL tests. The test suite drops and recreates application tables; never point it at production Supabase.
 
-To exercise a running local backend with 25 authenticated users joining, uploading photos, refreshing the feed, and receiving WebSocket updates at the same time, run:
+To rehearse with 40 authenticated users, start the API on loopback with a disposable database and local upload directory. The scenario covers simultaneous joins and photo uploads, feed reads during uploads and sign-ins, and live delivery and verification of final results.
 
 ```powershell
 cd backend
-uv run python -m scripts.load_test --users 25 --read-rounds 3
+uv run python -m scripts.load_test --base-url http://127.0.0.1:8000 --users 40 --read-rounds 5 --photo-size 720 --login-burst
 ```
 
 The load test refuses remote URLs by default so it cannot accidentally create test accounts or photos in production. It reports failures and p50, p95, and maximum latency for each operation.
@@ -243,7 +243,7 @@ The backend owns timers, scores, membership, permissions, validation, Party sche
 
 Database locks serialize submissions, joins, and finishing for each competition. SQLite uses its database write lock; PostgreSQL uses per-event row locks. Scores are derived from accepted records, and idempotency prevents retries from awarding duplicate points.
 
-WebSockets authenticate through their first message and observe database revisions every two seconds. Mobile polling runs every eight seconds while disconnected and resynchronizes after reconnecting or returning to the foreground. This approach suits small groups; larger deployments should use a shared event broker.
+WebSockets authenticate through their first message. Clients viewing the same competition share revision reads, with a 250 ms polling interval and two-second heartbeats. Mobile clients combine overlapping refreshes and resynchronize after reconnecting or returning to the foreground. Password hashing and photo uploads use separate worker queues so bursts of those operations leave capacity for game reads and live updates.
 
 ### Authentication, privacy, and storage
 

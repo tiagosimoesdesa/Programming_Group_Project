@@ -120,7 +120,6 @@ function Root() {
     setError("");
   }, []);
   const bootUp = useCallback(async () => {
-    const startedAt = Date.now();
     setBoot(true);
     setBootError("");
     try {
@@ -129,10 +128,6 @@ function Root() {
       if (!(e instanceof ApiError && e.status === 401))
         setBootError((e as Error).message);
     } finally {
-      // Keep the opening animation readable without delaying slower loads.
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.max(0, 1200 - (Date.now() - startedAt))),
-      );
       setBoot(false);
     }
   }, [load]);
@@ -197,9 +192,13 @@ function Root() {
             ? { name: value.trim(), mode: selectedMode }
             : { code: value.trim().toUpperCase() },
       );
+      setEvents((current) =>
+        [result, ...current.filter((item) => item.id !== result.id)].sort(
+          (a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id),
+        ),
+      );
       setSheet(null);
       setSelected(result.id);
-      await load();
     } catch (e) {
       setSheetError((e as Error).message);
     } finally {

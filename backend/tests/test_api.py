@@ -2,7 +2,7 @@ import io
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier, Event
 from urllib.parse import urlparse
 import pytest
 from fastapi import HTTPException
@@ -11,7 +11,7 @@ from PIL import Image
 from sqlalchemy import select
 from app import storage
 from app.db import Session
-from app.main import app
+from app.main import UPLOAD_CONCURRENCY, app
 from app.models import Competition, PartyRound, Submission
 from app.security import encode
 
@@ -207,6 +207,35 @@ def test_storage_failure_does_not_score(client, monkeypatch):
     assert client.get(f"/competitions/{night['id']}", headers=host).json()["standings"][0]["points"] == 0
     monkeypatch.setattr(storage, "put", original)
     assert submit(client, host, night["id"], key, pint_count=1).status_code == 201
+
+
+def test_game_reads_continue_while_photo_workers_are_busy(client, monkeypatch):
+    host, _ = account(client)
+    night = event(client, host)
+    workers = UPLOAD_CONCURRENCY
+    started = Barrier(workers + 1)
+    release = Event()
+    original_put = storage.put
+
+    def paused_put(key, data):
+        if key.endswith("rear.jpg"):
+            started.wait(timeout=10)
+            assert release.wait(timeout=10)
+        original_put(key, data)
+
+    monkeypatch.setattr(storage, "put", paused_put)
+    with ThreadPoolExecutor(workers + 1) as pool:
+        uploads = [pool.submit(submit, client, host, night["id"]) for _ in range(workers)]
+        try:
+            started.wait(timeout=10)
+            detail = pool.submit(client.get, f"/competitions/{night['id']}", headers=host).result(timeout=5)
+            assert detail.status_code == 200
+            assert detail.json()["standings"][0]["points"] == 0
+        finally:
+            release.set()
+        assert all(upload.result().status_code == 201 for upload in uploads)
+    detail = client.get(f"/competitions/{night['id']}", headers=host)
+    assert detail.json()["standings"][0]["points"] == workers
 
 
 def test_concurrent_duplicate_submissions(client):

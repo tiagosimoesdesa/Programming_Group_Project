@@ -3,13 +3,14 @@ import secrets
 import threading
 import time
 import uuid
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
+from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .scoring import beer_points
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import Integer, case, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 from . import storage
@@ -18,7 +19,20 @@ from .models import Competition, LoginAttempt, Membership, RefreshSession, Submi
 from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
 from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
-app = FastAPI(title="BEERREAL", version="0.1.0")
+
+UPLOAD_CONCURRENCY = 6
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Limit general work and give slower password and photo jobs their own queues.
+    to_thread.current_default_thread_limiter().total_tokens = 12
+    yield {
+        "auth_limiter": CapacityLimiter(settings.password_hash_concurrency),
+        "upload_limiter": CapacityLimiter(UPLOAD_CONCURRENCY),
+    }
+
+
+app = FastAPI(title="BEERREAL", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
 PARTY_ROUND_SECONDS = 30 * 60
@@ -43,10 +57,12 @@ PARTY_PROMPTS = [
     ("height", "Line up a group by height"),
     ("letter", "Form a letter using people"),
 ]
-LIVE_REVISION_CACHE_SECONDS = 1.5
+LIVE_REVISION_CACHE_SECONDS = 0.25
+LIVE_HEARTBEAT_SECONDS = 2
 _live_revision_cache: dict[str, tuple[float, str]] = {}
 _live_revision_locks: dict[str, threading.Lock] = {}
 _live_revision_guard = threading.Lock()
+_live_revision_reads: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[str]] = {}
 
 
 def _read_live_revision(event_id: str):
@@ -55,7 +71,8 @@ def _read_live_revision(event_id: str):
         if not event:
             raise HTTPException(404, "Competition not found")
         party_round = active_party_round(db, event)
-        return f"{event.revision}:{party_round.sequence if party_round else -1}"
+        revision = f"{event.revision}:{party_round.sequence if party_round else -1}"
+        return f"{revision}:ended" if battle_ends_at(event) and effective_ended_at(event) else revision
 
 
 def _cached_live_revision(event_id: str):
@@ -69,12 +86,35 @@ def _cached_live_revision(event_id: str):
             return cached[1]
         revision = _read_live_revision(event_id)
         with _live_revision_guard:
-            _live_revision_cache[event_id] = (now + LIVE_REVISION_CACHE_SECONDS, revision)
+            _live_revision_cache[event_id] = (time.monotonic() + LIVE_REVISION_CACHE_SECONDS, revision)
             if len(_live_revision_cache) > 256:
                 expired = [key for key, value in _live_revision_cache.items() if value[0] <= now]
                 for key in expired:
                     _live_revision_cache.pop(key, None)
         return revision
+
+
+async def live_revision(event_id: str):
+    with _live_revision_guard:
+        cached = _live_revision_cache.get(event_id)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+
+    # A burst of sockets shares one pending database read for this competition.
+    key = (asyncio.get_running_loop(), event_id)
+    task = _live_revision_reads.get(key)
+    if task is None:
+        task = asyncio.create_task(to_thread.run_sync(_cached_live_revision, event_id))
+        _live_revision_reads[key] = task
+
+        def discard(completed):
+            _live_revision_reads.pop(key, None)
+            # Observe an error even if all waiting clients have disconnected.
+            if not completed.cancelled():
+                completed.exception()
+
+        task.add_done_callback(discard)
+    return await asyncio.shield(task)
 
 
 def profile(user):
@@ -95,24 +135,36 @@ def effective_ended_at(event, now=None):
     return end if end and now >= end else None
 
 
-def event_out(db, event, viewer_id=None):
+def event_out(db, event, viewer_id=None, *, now=None, participants=None):
     membership = db.get(Membership, (event.id, viewer_id)) if viewer_id else None
     role = membership.role if membership else "player"
-    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": effective_ended_at(event), "revision": event.revision, "participants": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player")), "mode": event.mode, "party_started_at": event.party_started_at, "battle_started_at": event.battle_started_at}
+    if participants is None:
+        participants = db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player"))
+    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": effective_ended_at(event, now), "revision": event.revision, "participants": participants, "mode": event.mode, "party_started_at": event.party_started_at, "battle_started_at": event.battle_started_at}
+
+
+def event_membership(db, event_id, user_id):
+    row = db.execute(
+        select(Competition, Membership).join(Membership)
+        .where(Competition.id == event_id, Membership.user_id == user_id)
+    ).first()
+    if row is None:
+        raise HTTPException(404, "Competition not found")
+    return row
 
 
 def member_event(db, event_id, user_id):
-    event = db.get(Competition, event_id)
-    if not event or not db.get(Membership, (event_id, user_id)):
-        raise HTTPException(404, "Competition not found")
-    return event
+    return event_membership(db, event_id, user_id)[0]
 
 
 def lock_event(db, event_id):
     # An UPDATE acquires a write lock on SQLite and a row lock on PostgreSQL.
     # Submissions, joins, and ending always use this same lock order.
-    db.execute(update(Competition).where(Competition.id == event_id).values(revision=Competition.revision + 1))
-    return db.get(Competition, event_id, populate_existing=True)
+    return db.scalar(
+        update(Competition).where(Competition.id == event_id)
+        .values(revision=Competition.revision + 1).returning(Competition)
+        .execution_options(synchronize_session=False, populate_existing=True)
+    )
 
 
 def throttle(db, request, username):
@@ -169,31 +221,42 @@ def health(db: DbSession = Depends(get_db)):
     return {"status": "ok"}
 
 
-@app.post("/auth/register", response_model=Tokens, status_code=201)
-def register(body: Register, request: Request, db: DbSession = Depends(get_db)):
-    throttle(db, request, body.username)
-    user = User(username=body.username, password_hash=hash_password(body.password))
-    db.add(user)
-    try:
-        db.flush()
-        result = issue_tokens(db, user.id)
+def register_account(body: Register, request: Request):
+    with Session() as db:
+        throttle(db, request, body.username)
+        user = User(username=body.username, password_hash=hash_password(body.password))
+        db.add(user)
+        try:
+            db.flush()
+            result = issue_tokens(db, user.id)
+            db.commit()
+            return result
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409, "That username is already taken")
+
+
+def login_account(body: Credentials, request: Request):
+    with Session() as db:
+        throttle(db, request, body.username)
+        user = db.execute(select(User.id, User.password_hash).where(User.username == body.username)).first()
+        db.rollback()  # Release the connection before verifying the password.
+        valid = password_matches(body.password, user.password_hash if user else dummy_hash)
+        if not user or not valid:
+            raise HTTPException(401, "Incorrect username or password")
+        tokens = issue_tokens(db, user.id)
         db.commit()
-        return result
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(409, "That username is already taken")
+        return tokens
+
+
+@app.post("/auth/register", response_model=Tokens, status_code=201)
+async def register(body: Register, request: Request):
+    return await to_thread.run_sync(register_account, body, request, limiter=request.state.auth_limiter)
 
 
 @app.post("/auth/login", response_model=Tokens)
-def login(body: Credentials, request: Request, db: DbSession = Depends(get_db)):
-    throttle(db, request, body.username)
-    user = db.scalar(select(User).where(User.username == body.username))
-    valid = password_matches(body.password, user.password_hash if user else dummy_hash)
-    if not user or not valid:
-        raise HTTPException(401, "Incorrect username or password")
-    tokens = issue_tokens(db, user.id)
-    db.commit()
-    return tokens
+async def login(body: Credentials, request: Request):
+    return await to_thread.run_sync(login_account, body, request, limiter=request.state.auth_limiter)
 
 
 @app.post("/auth/refresh", response_model=Tokens)
@@ -208,17 +271,17 @@ def logout(body: RefreshIn, db: DbSession = Depends(get_db)):
 
 
 @app.post("/auth/web/register", response_model=AccessToken, status_code=201)
-def web_register(body: Register, request: Request, response: Response, db: DbSession = Depends(get_db)):
+async def web_register(body: Register, request: Request, response: Response):
     require_trusted_web_origin(request)
-    tokens = register(body, request, db)
+    tokens = await register(body, request)
     set_web_refresh_cookie(response, tokens["refresh_token"])
     return {"access_token": tokens["access_token"]}
 
 
 @app.post("/auth/web/login", response_model=AccessToken)
-def web_login(body: Credentials, request: Request, response: Response, db: DbSession = Depends(get_db)):
+async def web_login(body: Credentials, request: Request, response: Response):
     require_trusted_web_origin(request)
-    tokens = login(body, request, db)
+    tokens = await login(body, request)
     set_web_refresh_cookie(response, tokens["refresh_token"])
     return {"access_token": tokens["access_token"]}
 
@@ -258,7 +321,11 @@ def me(user: User = Depends(current_user)):
 
 
 @app.put("/me/avatar", response_model=Profile)
-def avatar(photo: UploadFile = File(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+async def avatar(request: Request, photo: UploadFile = File(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    return await to_thread.run_sync(store_avatar, photo, user, db, limiter=request.state.upload_limiter)
+
+
+def store_avatar(photo, user, db):
     data = storage.validate_image(photo)
     key = f"avatars/{user.id}/{uuid.uuid4()}.jpg"
     old = user.avatar
@@ -332,16 +399,60 @@ def join(body: JoinCompetition, user: User = Depends(current_user), db: DbSessio
     return event_out(db, event, user.id)
 
 
-_REACTIONS_UNSET = object()
+def photo_data(db, rows, viewer_id=None, people=()):
+    photos = {row.id: row for row in rows}
+    owners = {person.id: person for person in people}
+    missing = {row.user_id for row in photos.values()} - owners.keys()
+    if missing:
+        owners.update((user.id, user) for user in db.scalars(select(User).where(User.id.in_(missing))))
+    round_ids = {row.party_round_id for row in photos.values() if row.party_round_id}
+    prompts = dict(db.execute(select(PartyRound.id, PartyRound.prompt).where(PartyRound.id.in_(round_ids))).all()) if round_ids else {}
+    reactions = {photo_id: {} for photo_id in photos}
+    my_reactions = {}
+    if photos:
+        for photo_id, emoji, count in db.execute(
+            select(Reaction.submission_id, Reaction.emoji, func.count())
+            .where(Reaction.submission_id.in_(photos))
+            .group_by(Reaction.submission_id, Reaction.emoji)
+        ):
+            reactions[photo_id][emoji] = count
+        if viewer_id:
+            my_reactions = dict(db.execute(
+                select(Reaction.submission_id, Reaction.emoji)
+                .where(Reaction.submission_id.in_(photos), Reaction.user_id == viewer_id)
+            ).all())
+    return photos, owners, prompts, reactions, my_reactions
 
 
-def photo_out(db, row, viewer_id=None, reactions=None, my_reaction=_REACTIONS_UNSET):
-    party_round = db.get(PartyRound, row.party_round_id) if row.party_round_id else None
-    if reactions is None:
-        reactions = dict(db.execute(select(Reaction.emoji, func.count()).where(Reaction.submission_id == row.id).group_by(Reaction.emoji)).all())
-    if my_reaction is _REACTIONS_UNSET:
-        my_reaction = db.scalar(select(Reaction.emoji).where(Reaction.submission_id == row.id, Reaction.user_id == viewer_id)) if viewer_id else None
-    return {"id": row.id, "user": profile(db.get(User, row.user_id)), "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front), "created_at": row.created_at, "beer_count": row.beer_count if row.kind == "drink" else 0, "pint_count": row.pint_count if row.kind == "drink" else 0, "beer_points": beer_points(row.beer_count, row.pint_count) if row.kind == "drink" else 0, "reactions": reactions, "my_reaction": my_reaction, "kind": row.kind, "challenge_prompt": party_round.prompt if party_round else None}
+def render_photos(photos, owners, prompts, reactions, my_reactions):
+    storage.prime_photo_urls([
+        *(person.avatar for person in owners.values()),
+        *(key for row in photos.values() for key in (row.rear, row.front)),
+    ])
+    profiles = {person.id: profile(person) for person in owners.values()}
+    result = {
+        row.id: render_photo(row, profiles[row.user_id], reactions[row.id], my_reactions.get(row.id), prompts.get(row.party_round_id))
+        for row in photos.values()
+    }
+    return result, profiles
+
+
+def render_photo(row, owner, reactions, my_reaction=None, prompt=None):
+    count = row.beer_count if row.kind == "drink" else 0
+    pints = row.pint_count if row.kind == "drink" else 0
+    return {
+        "id": row.id, "user": owner, "created_at": row.created_at,
+        "rear_url": storage.photo_url(row.rear), "front_url": storage.photo_url(row.front),
+        "beer_count": count, "pint_count": pints, "beer_points": beer_points(count, pints),
+        "reactions": reactions, "my_reaction": my_reaction,
+        "kind": row.kind, "challenge_prompt": prompt,
+    }
+
+
+def photo_out(db, row, viewer_id=None):
+    data = photo_data(db, [row], viewer_id)
+    db.commit()  # Release the read connection before signing private media.
+    return render_photos(*data)[0][row.id]
 
 
 def visible_submissions(event_id):
@@ -371,10 +482,10 @@ def score_rows(db, event_id):
     ).all()
 
 
-def battle_state(db, event, viewer_id):
+def battle_state(db, event, viewer_id, rows=None, profiles=None, now=None):
     if event.mode != "battle":
         raise HTTPException(409, "This competition is not a battle")
-    now = int(time.time())
+    now = int(time.time()) if now is None else now
     membership = db.get(Membership, (event.id, viewer_id))
     end = battle_ends_at(event)
     finished = effective_ended_at(event, now)
@@ -386,7 +497,11 @@ def battle_state(db, event, viewer_id):
         status = "active"
     else:
         status = "waiting"
-    rows = score_rows(db, event.id)
+    if rows is None:
+        rows = score_rows(db, event.id)
+    if profiles is None:
+        storage.prime_photo_urls(person.avatar for person, *_ in rows)
+        profiles = {person.id: profile(person) for person, *_ in rows}
     teams = []
     totals = {}
     for key, name in (("a", event.battle_team_a_name), ("b", event.battle_team_b_name)):
@@ -401,7 +516,7 @@ def battle_state(db, event, viewer_id):
             if points != previous:
                 rank += 1
             members.append({
-                **profile(person),
+                **profiles[person.id],
                 "count": count if reveal else None,
                 "points": points if reveal else None,
                 "rank": rank if reveal else None,
@@ -498,19 +613,11 @@ def leave_battle(event_id: str, user: User = Depends(current_user), db: DbSessio
 
 @app.get("/competitions/{event_id}", response_model=EventDetail)
 def detail(event_id: str, before: str | None = None, player: str | None = None, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    event = member_event(db, event_id, user.id)
+    event, my_membership = event_membership(db, event_id, user.id)
+    now = int(time.time())
+    ended = effective_ended_at(event, now)
     rows = score_rows(db, event_id)
-    storage.prime_photo_urls(person.avatar for person, *_ in rows)
-    my_membership = db.get(Membership, (event_id, user.id))
-    battle = battle_state(db, event, user.id) if event.mode == "battle" else None
-    private_active_battle = bool(battle and battle["status"] == "active" and not battle["points_visible"])
-    standing_rows = [row for row in rows if not private_active_battle or row[1] == my_membership.team]
-    standings, rank, previous = [], 0, None
-    for person, team, count, challenge_points, points in standing_rows:
-        if points != previous:
-            rank += 1
-        standings.append({**profile(person), "count": count, "challenge_points": challenge_points, "points": points, "rank": rank, "team": team})
-        previous = points
+    private_active_battle = bool(event.battle_started_at and not ended and not event.battle_points_visible)
     query = select(Submission).where(Submission.competition_id == event_id, visible_submissions(event_id))
     if private_active_battle:
         teammates = select(Membership.user_id).where(Membership.competition_id == event_id, Membership.team == my_membership.team)
@@ -522,45 +629,66 @@ def detail(event_id: str, before: str | None = None, player: str | None = None, 
         if not cursor or cursor.competition_id != event_id:
             raise HTTPException(400, "Invalid feed cursor")
         query = query.where((Submission.created_at < cursor.created_at) | ((Submission.created_at == cursor.created_at) & (Submission.id < cursor.id)))
-    photos = list(db.scalars(query.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(21)))
-    storage.prime_photo_urls(key for photo in photos for key in (photo.rear, photo.front))
-    photo_ids = [photo.id for photo in photos]
-    reaction_counts = {photo_id: {} for photo_id in photo_ids}
-    my_reactions = {}
-    if photo_ids:
-        for photo_id, emoji, count in db.execute(
-            select(Reaction.submission_id, Reaction.emoji, func.count())
-            .where(Reaction.submission_id.in_(photo_ids))
-            .group_by(Reaction.submission_id, Reaction.emoji)
+    page = list(db.scalars(query.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(21)))
+    feed = page[:20]
+    first, last = {}, {}
+    if ended:
+        # Find every player's first and last drink in one query, independent of the feed page.
+        window = {"partition_by": Submission.user_id}
+        ranked = select(
+            Submission.id,
+            func.row_number().over(**window, order_by=(Submission.created_at, Submission.id)).label("first"),
+            func.row_number().over(**window, order_by=(Submission.created_at.desc(), Submission.id.desc())).label("last"),
+        ).where(Submission.competition_id == event_id, Submission.kind == "drink").subquery()
+        for photo, first_rank, last_rank in db.execute(
+            select(Submission, ranked.c.first, ranked.c.last).join(ranked, ranked.c.id == Submission.id)
+            .where(or_(ranked.c.first == 1, ranked.c.last == 1))
         ):
-            reaction_counts[photo_id][emoji] = count
-        my_reactions = dict(db.execute(
-            select(Reaction.submission_id, Reaction.emoji)
-            .where(Reaction.submission_id.in_(photo_ids), Reaction.user_id == user.id)
-        ).all())
+            if first_rank == 1:
+                first[photo.user_id] = photo
+            elif last_rank == 1:
+                last[photo.user_id] = photo
+    competition = event_out(db, event, user.id, now=now, participants=len(rows))
+    data = photo_data(db, [*feed, *first.values(), *last.values()], user.id, (row[0] for row in rows))
+    db.commit()  # Signing and serialization do not need a database connection.
+    all_photos, profiles = render_photos(*data)
+    standings, rank, previous = [], 0, None
+    for person, team, count, challenge_points, points in rows:
+        if private_active_battle and team != my_membership.team:
+            continue
+        if points != previous:
+            rank += 1
+        standings.append({**profiles[person.id], "count": count, "challenge_points": challenge_points, "points": points, "rank": rank, "team": team})
+        previous = points
     recap = []
-    if effective_ended_at(event):
-        # Night moments bookends drink check-ins independently of feed pagination.
-        for person, team, count, challenge_points, points in rows:
-            own = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == person.id, Submission.kind == "drink")
-            first = db.scalar(own.order_by(Submission.created_at, Submission.id).limit(1))
-            last = db.scalar(own.order_by(Submission.created_at.desc(), Submission.id.desc()).limit(1))
-            if first and last and first.id == last.id:
-                last = None
-            recap.append({"user": profile(person), "first": photo_out(db, first) if first else None, "last": photo_out(db, last) if last else None})
-    return {"competition": event_out(db, event, user.id), "standings": standings, "feed": [photo_out(db, row, user.id, reaction_counts[row.id], my_reactions.get(row.id)) for row in photos[:20]], "next_cursor": photos[19].id if len(photos) > 20 else None, "recap": recap, "battle": battle}
+    if ended:
+        for person, *_ in rows:
+            first_photo, last_photo = first.get(person.id), last.get(person.id)
+            recap.append({
+                "user": profiles[person.id],
+                "first": {**all_photos[first_photo.id], "my_reaction": None} if first_photo else None,
+                "last": {**all_photos[last_photo.id], "my_reaction": None} if last_photo else None,
+            })
+    battle = battle_state(db, event, user.id, rows, profiles, now) if event.mode == "battle" else None
+    return {"competition": competition, "standings": standings, "feed": [all_photos[row.id] for row in feed], "next_cursor": feed[-1].id if len(page) > len(feed) else None, "recap": recap, "battle": battle}
 
 
 @app.post("/competitions/{event_id}/submissions", response_model=PhotoOut, status_code=201)
-def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(), beer_count: int = Form(1, ge=1, le=10), pint_count: int = Form(0, ge=0, le=10, description="Pints (exactly 0.5 L) included in beer_count; remaining beers are regular (below 0.5 L)."), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
-    current_event = member_event(db, event_id, user.id)
-    if db.get(Membership, (event_id, user.id)).role != "player":
+async def submit(event_id: str, request: Request, rear: UploadFile = File(), front: UploadFile = File(), beer_count: int = Form(1, ge=1, le=10), pint_count: int = Form(0, ge=0, le=10, description="Pints (exactly 0.5 L) included in beer_count; remaining beers are regular (below 0.5 L)."), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    return await to_thread.run_sync(
+        submit_check_in, event_id, rear, front, beer_count, pint_count, idempotency_key, user, db,
+        limiter=request.state.upload_limiter,
+    )
+
+
+def submit_check_in(event_id, rear, front, beer_count, pint_count, idempotency_key, user, db):
+    current_event, membership = event_membership(db, event_id, user.id)
+    if membership.role != "player":
         raise HTTPException(403, "Spectators cannot submit photos")
     if current_event.mode == "battle":
-        state = battle_state(db, current_event, user.id)
-        if state["status"] != "active":
+        if not current_event.battle_started_at or effective_ended_at(current_event):
             raise HTTPException(409, "Battle photos are accepted only while the battle is active")
-        if not state["my_team"]:
+        if not membership.team:
             raise HTTPException(409, "Choose a team before posting a battle photo")
     key = str(idempotency_key)
     existing_query = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == user.id, Submission.idempotency_key == key)
@@ -569,10 +697,10 @@ def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(),
         return photo_out(db, existing)
     if pint_count > beer_count:
         raise HTTPException(422, "Pint count cannot exceed total beer count")
-    rear_data, front_data = storage.validate_image(rear), storage.validate_image(front)
-    # Finish read transaction before slow storage I/O, then lock and re-check.
+    # Release the read connection before processing and uploading the photos.
     user_id = user.id
-    db.rollback()
+    db.commit()
+    rear_data, front_data = storage.validate_image(rear), storage.validate_image(front)
     photo_id = str(uuid.uuid4())
     paths = [f"events/{event_id}/{photo_id}/{side}.jpg" for side in ("rear", "front")]
     uploaded = []
@@ -594,7 +722,8 @@ def submit(event_id: str, rear: UploadFile = File(), front: UploadFile = File(),
         db.add(row)
         db.commit()
         committed = True
-        return photo_out(db, row)
+        storage.prime_photo_urls([user.avatar, row.rear, row.front])
+        return render_photo(row, profile(user), {})
     finally:
         if not committed:
             db.rollback()
@@ -658,13 +787,30 @@ def party_round_out(row):
     return {"id": row.id, "sequence": row.sequence, "prompt": row.prompt, "starts_at": row.starts_at, "ends_at": row.ends_at}
 
 
+def claim_vote_totals(db, claims, viewer_id):
+    if not claims:
+        return {}
+    return {
+        claim_id: (total, bool(my_vote) if my_vote is not None else None)
+        for claim_id, total, my_vote in db.execute(
+            select(
+                ChallengeVote.claim_id,
+                func.count().filter(ChallengeVote.approve),
+                func.max(case((ChallengeVote.user_id == viewer_id, cast(ChallengeVote.approve, Integer)))),
+            )
+            .where(ChallengeVote.claim_id.in_(claim.id for claim in claims))
+            .group_by(ChallengeVote.claim_id)
+        )
+    }
+
+
 def party_state(db, event, viewer_id):
     if event.mode != "party":
         raise HTTPException(409, "This night is in Classic Mode")
     now = int(time.time())
     visible_at = min(now, event.ended_at) if event.ended_at else now
     rounds = list(db.scalars(select(PartyRound).where(PartyRound.competition_id == event.id, PartyRound.starts_at <= visible_at).order_by(PartyRound.sequence)))
-    current = active_party_round(db, event, now)
+    current = next((row for row in rounds if not event.ended_at and row.ends_at > now), None)
     ends_at = event.party_started_at + len(PARTY_PROMPTS) * PARTY_ROUND_SECONDS if event.party_started_at else None
     if event.ended_at:
         status = "ended"
@@ -676,17 +822,25 @@ def party_state(db, event, viewer_id):
         status = "active"
     attempts = []
     scores = {}
-    claims = db.scalars(select(ChallengeClaim).where(ChallengeClaim.competition_id == event.id, ChallengeClaim.round_id.is_not(None)).order_by(ChallengeClaim.id.desc()))
-    for claim in claims:
-        party_round = db.get(PartyRound, claim.round_id)
-        votes = dict(db.execute(select(ChallengeVote.user_id, ChallengeVote.approve).where(ChallengeVote.claim_id == claim.id)).all())
-        approvals = sum(1 for approved in votes.values() if approved)
+    claim_rows = db.execute(
+        select(ChallengeClaim, Submission, PartyRound.prompt)
+        .join(Submission, Submission.id == ChallengeClaim.submission_id)
+        .join(PartyRound, PartyRound.id == ChallengeClaim.round_id)
+        .where(ChallengeClaim.competition_id == event.id)
+        .order_by(ChallengeClaim.id.desc())
+    ).all()
+    totals = claim_vote_totals(db, [row[0] for row in claim_rows], viewer_id)
+    players = db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player"))
+    data = photo_data(db, (row[1] for row in claim_rows), viewer_id)
+    db.commit()
+    photos, _ = render_photos(*data)
+    for claim, photo, prompt in claim_rows:
+        approvals, my_vote = totals.get(claim.id, (0, None))
         required = len(claim.voters) // 2 + 1
         result = "approved" if claim.approved else "not_approved" if event.ended_at else "pending"
         if claim.approved:
             scores[claim.user_id] = scores.get(claim.user_id, 0) + PARTY_POINTS
-        attempts.append({"id": claim.id, "round_id": claim.round_id, "prompt": party_round.prompt, "photo": photo_out(db, db.get(Submission, claim.submission_id), viewer_id), "approvals": approvals, "required": required, "status": result, "can_vote": not event.ended_at and viewer_id in claim.voters, "my_vote": votes.get(viewer_id)})
-    players = db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player"))
+        attempts.append({"id": claim.id, "round_id": claim.round_id, "prompt": prompt, "photo": photos[photo.id], "approvals": approvals, "required": required, "status": result, "can_vote": not event.ended_at and viewer_id in claim.voters, "my_vote": my_vote})
     return {"status": status, "server_time": now, "started_at": event.party_started_at, "ends_at": ends_at, "can_start": event.host_id == viewer_id and not event.ended_at and not event.party_started_at and players >= 2, "active_round": party_round_out(current) if current else None, "rounds": [party_round_out(row) for row in rounds], "attempts": attempts, "scores": scores}
 
 
@@ -721,7 +875,14 @@ def start_party(event_id: str, user: User = Depends(current_user), db: DbSession
 
 
 @app.post("/competitions/{event_id}/party/rounds/{round_id}/attempts", response_model=PartyOut, status_code=201)
-def submit_party_attempt(event_id: str, round_id: str, rear: UploadFile = File(), front: UploadFile = File(), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+async def submit_party_attempt(event_id: str, round_id: str, request: Request, rear: UploadFile = File(), front: UploadFile = File(), idempotency_key: uuid.UUID = Header(), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    return await to_thread.run_sync(
+        submit_challenge_photo, event_id, round_id, rear, front, idempotency_key, user, db,
+        limiter=request.state.upload_limiter,
+    )
+
+
+def submit_challenge_photo(event_id, round_id, rear, front, idempotency_key, user, db):
     event = member_event(db, event_id, user.id)
     membership = db.get(Membership, (event_id, user.id))
     if membership.role != "player":
@@ -737,9 +898,9 @@ def submit_party_attempt(event_id: str, round_id: str, rear: UploadFile = File()
         raise HTTPException(409, "This challenge is no longer active")
     if db.scalar(select(ChallengeClaim).where(ChallengeClaim.round_id == round_id, ChallengeClaim.user_id == user.id)):
         raise HTTPException(409, "You already submitted this challenge")
-    rear_data, front_data = storage.validate_image(rear), storage.validate_image(front)
     user_id = user.id
     db.rollback()
+    rear_data, front_data = storage.validate_image(rear), storage.validate_image(front)
     photo_id = str(uuid.uuid4())
     paths = [f"events/{event_id}/party/{photo_id}/{side}.jpg" for side in ("rear", "front")]
     uploaded = []
@@ -801,20 +962,25 @@ def social(event_id: str, user: User = Depends(current_user), db: DbSession = De
     if event.mode == "battle":
         raise HTTPException(409, "Battle privacy and scoring are managed in Battle Mode")
     claims, scores = [], {}
-    legacy_claims = (
-        select(ChallengeClaim)
+    legacy_claims = db.execute(
+        select(ChallengeClaim, Submission)
+        .join(Submission, Submission.id == ChallengeClaim.submission_id)
         .where(ChallengeClaim.competition_id == event_id, ChallengeClaim.round_id.is_(None))
         .order_by(ChallengeClaim.id)
-    )
-    for claim in db.scalars(legacy_claims):
-        votes = dict(db.execute(select(ChallengeVote.user_id, ChallengeVote.approve).where(ChallengeVote.claim_id == claim.id)).all())
-        approvals = sum(votes.values())
+    ).all()
+    totals = claim_vote_totals(db, [row[0] for row in legacy_claims], user.id)
+    spectators = db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event_id, Membership.role == "spectator"))
+    data = photo_data(db, (row[1] for row in legacy_claims), user.id)
+    db.commit()
+    photos, _ = render_photos(*data)
+    for claim, photo in legacy_claims:
+        approvals, my_vote = totals.get(claim.id, (0, None))
         required = len(claim.voters) // 2 + 1
         status = "approved" if approvals >= required else "not_approved" if event.ended_at else "pending"
         if status == "approved":
             scores[claim.user_id] = scores.get(claim.user_id, 0) + 1
-        claims.append({"id": claim.id, "prompt": claim.prompt, "photo": photo_out(db, db.get(Submission, claim.submission_id), user.id), "approvals": approvals, "required": required, "status": status, "can_vote": not event.ended_at and user.id in claim.voters, "my_vote": votes.get(user.id)})
-    return {"enabled": event.challenges_enabled, "spectator_code": event.spectator_code if event.host_id == user.id else None, "spectators": db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event_id, Membership.role == "spectator")), "prompts": PROMPTS, "claims": claims, "scores": scores}
+        claims.append({"id": claim.id, "prompt": claim.prompt, "photo": photos[photo.id], "approvals": approvals, "required": required, "status": status, "can_vote": not event.ended_at and user.id in claim.voters, "my_vote": my_vote})
+    return {"enabled": event.challenges_enabled, "spectator_code": event.spectator_code if event.host_id == user.id else None, "spectators": spectators, "prompts": PROMPTS, "claims": claims, "scores": scores}
 
 
 @app.post("/competitions/{event_id}/social/enable", response_model=SocialOut)
@@ -904,16 +1070,20 @@ async def live(socket: WebSocket, event_id: str):
         def authorize():
             with Session() as db:
                 member_event(db, event_id, claims["sub"])
-        await asyncio.to_thread(authorize)
+        await to_thread.run_sync(authorize)
         previous = None
+        last_message = 0.0
         while int(time.time()) < claims["exp"]:
-            revision = await asyncio.to_thread(_cached_live_revision, event_id)
+            revision = await live_revision(event_id)
+            now = time.monotonic()
             if revision != previous:
                 await socket.send_json({"type": "changed", "revision": revision})
                 previous = revision
-            else:
+                last_message = now
+            elif now - last_message >= LIVE_HEARTBEAT_SECONDS:
                 await socket.send_json({"type": "heartbeat"})
-            await asyncio.sleep(2)
+                last_message = now
+            await asyncio.sleep(LIVE_REVISION_CACHE_SECONDS)
         await socket.close(code=4401)
     except (HTTPException, asyncio.TimeoutError, ValueError, KeyError, TypeError):
         with suppress(RuntimeError, WebSocketDisconnect):

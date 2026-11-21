@@ -17,6 +17,7 @@ SIGNED_URL_CACHE_SECONDS = 540
 _storage_client = httpx.Client()
 _signed_urls: dict[str, tuple[float, str]] = {}
 _signed_urls_lock = threading.Lock()
+_signing_lock = threading.Lock()
 
 
 def validate_image(upload: UploadFile) -> bytes:
@@ -87,16 +88,33 @@ def remove(key: str):
 
 def prime_photo_urls(keys):
     unique = list(dict.fromkeys(key for key in keys if key))
-    if settings.storage_mode == "local" or not unique:
+    if not unique:
         return
-    now = time.monotonic()
+
+    def missing_urls():
+        now = time.monotonic()
+        return [key for key in unique if key not in _signed_urls or _signed_urls[key][0] <= now]
+
     with _signed_urls_lock:
-        if len(_signed_urls) > 1024:
-            expired = [key for key, value in _signed_urls.items() if value[0] <= now]
-            for key in expired:
-                _signed_urls.pop(key, None)
-        missing = [key for key in unique if key not in _signed_urls or _signed_urls[key][0] <= now]
+        if not missing_urls():
+            return
+    # Coalesce cache misses while letting cached reads and uploads continue.
+    with _signing_lock:
+        now = time.monotonic()
+        with _signed_urls_lock:
+            if len(_signed_urls) > 1024:
+                expired = [key for key, value in _signed_urls.items() if value[0] <= now]
+                for key in expired:
+                    _signed_urls.pop(key, None)
+            missing = missing_urls()
         if not missing:
+            return
+        expires = now + SIGNED_URL_CACHE_SECONDS
+        if settings.storage_mode == "local":
+            with _signed_urls_lock:
+                for key in missing:
+                    token = encode(key, "photo", SIGNED_URL_SECONDS)
+                    _signed_urls[key] = (expires, f"{settings.public_url}/media?token={quote(token)}")
             return
         try:
             response = _storage_client.post(
@@ -109,13 +127,15 @@ def prime_photo_urls(keys):
             results = response.json()
             if not isinstance(results, list) or len(results) != len(missing):
                 raise ValueError("Unexpected signed URL response")
-            expires = now + SIGNED_URL_CACHE_SECONDS
+            signed_urls = {}
             for index, item in enumerate(results):
                 key = item.get("path") or missing[index]
                 signed = item.get("signedURL")
                 if item.get("error") or not signed:
                     raise ValueError("A photo URL could not be signed")
-                _signed_urls[key] = (expires, f"{settings.supabase_url}/storage/v1{signed}")
+                signed_urls[key] = (expires, f"{settings.supabase_url}/storage/v1{signed}")
+            with _signed_urls_lock:
+                _signed_urls.update(signed_urls)
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
             raise HTTPException(503, "Photo storage is temporarily unavailable")
 
@@ -123,9 +143,10 @@ def prime_photo_urls(keys):
 def photo_url(key: str | None):
     if not key:
         return None
-    if settings.storage_mode == "local":
-        token = encode(key, "photo", SIGNED_URL_SECONDS)
-        return f"{settings.public_url}/media?token={quote(token)}"
+    with _signed_urls_lock:
+        cached = _signed_urls.get(key)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
     prime_photo_urls([key])
     try:
         with _signed_urls_lock:

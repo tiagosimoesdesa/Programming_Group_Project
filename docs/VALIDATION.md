@@ -69,6 +69,8 @@ With 100 archived nights per account, the candidate sustained **34.53 requests p
 
 The initial wave put all 60 sign-ins into the queue together. Login p95 was 2.62 seconds, with 17 password jobs waiting at the sampled peak. The recovery phase returned to 105 ms ordinary p95 with ten active users. These are results for a short soak on the local host.
 
+A repeat of the same 75-second soak sustained **30.17 RPS**, with 2,261 successes and six timeouts waiting for HTTP responses (0.265%). Overall HTTP average, p95, and p99 were 221, 399, and 1,295 ms. Ordinary p95 was 379 ms. Three timeouts were on history, one on detail, and two on reactions. API RSS peaked at 125 MiB, all 12 general worker slots were briefly busy, and the database pool peaked at 13 of 15. Recovery returned to 94 ms ordinary p95 with zero errors, and the integrity audit again passed. These timeouts are a remaining reliability risk at 60, even below the proposed 1% error budget.
+
 ### Concurrency and integrity
 
 - Twelve requests with an identical check-in key returned the same photo ID. Twelve competing updates to the same photo reaction left exactly one reaction for that user. Two attempts to rotate the same refresh token yielded one success and one expected 401. Every logout returned 204.

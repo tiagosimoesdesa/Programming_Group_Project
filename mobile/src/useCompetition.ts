@@ -1,39 +1,87 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
-import { BASE, Detail, liveToken, request } from "./api";
+import { BASE, Detail, liveToken, Photo, request } from "./api";
 
 export function useCompetition(id: string, player?: string) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
-  const mounted = useRef(true);
+  const latest = useRef<Detail | null>(null);
   const sequence = useRef(0);
-  const refresh = useCallback(async () => {
-    const n = ++sequence.current;
-    try {
-      const value = await request<Detail>(
-        `/competitions/${id}${player ? `?player=${encodeURIComponent(player)}` : ""}`,
-      );
-      if (mounted.current && n === sequence.current) {
-        setDetail(value);
-        setError("");
+  const query = useMemo(
+    () => ({
+      controller: new AbortController(),
+      flight: null as Promise<void> | null,
+      pending: false,
+    }),
+    [id, player],
+  );
+  const refresh = useCallback(
+    (afterChange = true) => {
+      const signal = query.controller.signal;
+      if (signal.aborted) return Promise.resolve();
+      if (query.flight) {
+        query.pending ||= afterChange;
+        return query.flight;
       }
-    } catch (e) {
-      if (mounted.current && n === sequence.current)
-        setError((e as Error).message);
-    }
-  }, [id, player]);
+      const path = `/competitions/${id}${player ? `?player=${encodeURIComponent(player)}` : ""}`;
+      query.flight = (async () => {
+        do {
+          query.pending = false;
+          sequence.current++;
+          try {
+            const value = await request<Detail>(path, { signal });
+            if (!signal.aborted) {
+              latest.current = value;
+              setDetail(value);
+              setError("");
+            }
+          } catch (e) {
+            if (!signal.aborted) setError((e as Error).message);
+          }
+        } while (query.pending && !signal.aborted);
+      })().finally(() => {
+        if (signal === query.controller.signal) query.flight = null;
+      });
+      return query.flight;
+    },
+    [id, player, query],
+  );
+  const refreshCurrent = useRef(refresh);
+  useEffect(() => {
+    refreshCurrent.current = refresh;
+    const controller = new AbortController();
+    query.controller = controller;
+    query.flight = null;
+    void refresh(false);
+    return () => controller.abort();
+  }, [query, refresh]);
+  function replacePhoto(photo: Photo) {
+    // Keep any older pages already loaded while the next live refresh runs.
+    sequence.current++;
+    setDetail(
+      (current) =>
+        current && {
+          ...current,
+          feed: current.feed.map((item) =>
+            item.id === photo.id ? photo : item,
+          ),
+        },
+    );
+  }
   async function loadMore() {
     if (!detail?.next_cursor || loading) return;
+    const signal = query.controller.signal;
     setLoading(true);
     const revision = detail.competition.revision;
     const generation = sequence.current;
     try {
       const page = await request<Detail>(
         `/competitions/${id}?before=${detail.next_cursor}${player ? `&player=${encodeURIComponent(player)}` : ""}`,
+        { signal },
       );
-      if (mounted.current && sequence.current === generation)
+      if (!signal.aborted && sequence.current === generation)
         setDetail((current) =>
           current && current.competition.revision === revision
             ? {
@@ -49,67 +97,117 @@ export function useCompetition(id: string, player?: string) {
             : current,
         );
     } catch (e) {
-      setError((e as Error).message);
+      if (!signal.aborted) setError((e as Error).message);
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => {
-    mounted.current = true;
     let active = AppState.currentState === "active";
     let disposed = false;
     let socket: WebSocket | null = null;
+    let connecting = false;
+    let generation = 0;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     let online = false;
-    let lastRefresh = 0;
+    let lastRefresh = Date.now();
     let lastHeartbeat = 0;
+    let revision: string | undefined;
     let attempts = 0;
-    async function connect() {
-      if (disposed || !active) return;
+    async function connect(verify = false) {
+      if (disposed || !active || connecting || socket) return;
+      connecting = true;
+      const attempt = generation;
       try {
-        const token = await liveToken();
-        if (disposed || !active) return;
+        const token = await liveToken(verify);
+        if (disposed || !active || attempt !== generation) return;
         const socketBase =
           (Platform.OS === "web"
             ? process.env.EXPO_PUBLIC_WEB_SOCKET_URL
             : undefined) || BASE.replace(/^http/, "ws");
-        socket = new WebSocket(
+        const current = new WebSocket(
           `${socketBase.replace(/^http/, "ws")}/ws/competitions/${id}`,
         );
-        socket.onopen = () => socket?.send(JSON.stringify({ token }));
-        socket.onmessage = (event) => {
-          if (disposed || !active) return;
+        socket = current;
+        current.onopen = () => {
+          if (socket === current) current.send(JSON.stringify({ token }));
+        };
+        current.onmessage = (event) => {
+          if (disposed || !active || socket !== current) return;
           online = true;
           lastHeartbeat = Date.now();
           attempts = 0;
           setConnected(true);
           try {
             const message = JSON.parse(event.data);
-            if (message.type === "changed") {
+            if (
+              message.type === "changed" &&
+              typeof message.revision === "string" &&
+              message.revision !== revision
+            ) {
+              const first = revision === undefined;
+              revision = message.revision;
+              const [number, , phase] = message.revision.split(":");
+              const caughtUp = () => {
+                const loaded = latest.current?.competition;
+                return (
+                  loaded?.id === id &&
+                  loaded.revision >= Number(number) &&
+                  (!phase || Boolean(loaded.ended_at))
+                );
+              };
               lastRefresh = Date.now();
-              void refresh();
+              if (!first) {
+                void refreshCurrent.current();
+              } else if (!caughtUp()) {
+                void refreshCurrent.current(false).then(() => {
+                  if (
+                    socket === current &&
+                    latest.current &&
+                    !caughtUp() &&
+                    revision === message.revision
+                  )
+                    void refreshCurrent.current();
+                });
+              }
             }
           } catch {
             /* Ignore malformed network frames. */
           }
         };
-        socket.onerror = () => socket?.close();
-        socket.onclose = () => {
+        current.onerror = () => current.close();
+        current.onclose = (event) => {
+          if (socket !== current) return;
+          socket = null;
           online = false;
           if (disposed) return;
           setConnected(false);
           if (active)
             reconnect = setTimeout(
-              () => void connect(),
-              Math.min(30000, 1500 * 2 ** attempts++),
+              () => void connect(event.code === 4401),
+              Math.min(30000, 1500 * 2 ** attempts++) *
+                (0.8 + Math.random() * 0.4),
             );
         };
       } catch {
-        if (!disposed && active)
-          reconnect = setTimeout(() => void connect(), 10000);
+        if (!disposed && active && attempt === generation)
+          reconnect = setTimeout(
+            () => void connect(verify),
+            8000 + Math.random() * 4000,
+          );
+      } finally {
+        if (attempt === generation) connecting = false;
       }
     }
-    void refresh();
+    function disconnect() {
+      generation++;
+      connecting = false;
+      online = false;
+      clearTimeout(reconnect);
+      const current = socket;
+      socket = null;
+      current?.close();
+    }
     void connect();
     const poll = setInterval(() => {
       if (active && online && Date.now() - lastHeartbeat > 12000) {
@@ -119,29 +217,26 @@ export function useCompetition(id: string, player?: string) {
       }
       if (active && (!online || Date.now() - lastRefresh > 240000)) {
         lastRefresh = Date.now();
-        void refresh();
+        void refreshCurrent.current(false);
       }
     }, 8000);
     const listener = AppState.addEventListener("change", (state) => {
       const wasActive = active;
       active = state === "active";
       if (!active) {
-        clearTimeout(reconnect);
-        socket?.close();
+        disconnect();
+        setConnected(false);
       } else if (!wasActive) {
-        void refresh();
+        void refreshCurrent.current();
         void connect();
       }
     });
     return () => {
       disposed = true;
-      mounted.current = false;
-      sequence.current++;
+      disconnect();
       clearInterval(poll);
-      clearTimeout(reconnect);
       listener.remove();
-      socket?.close();
     };
-  }, [id, refresh]);
-  return { detail, error, connected, refresh, loadMore, loading };
+  }, [id]);
+  return { detail, error, connected, refresh, loadMore, loading, replacePhoto };
 }

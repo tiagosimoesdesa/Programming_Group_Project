@@ -69,7 +69,7 @@ export default function CompetitionScreen({
   const [player, setPlayer] = useState<string | undefined>();
   const [expanded, setExpanded] = useState<Photo | null>(null);
   const [reacting, setReacting] = useState<string | null>(null);
-  const { detail, error, connected, refresh, loadMore, loading } =
+  const { detail, error, connected, refresh, loadMore, loading, replacePhoto } =
     useCompetition(id, player);
   const [liveTab, setLiveTab] = useState<LiveTab | null>(null);
   const [closedTab, setClosedTab] = useState<CompetitionTab | "moments" | null>(
@@ -191,7 +191,7 @@ export default function CompetitionScreen({
             setBusy(true);
             setActionError("");
             post(`/competitions/${id}/end`)
-              .then(refresh)
+              .then(() => refresh())
               .catch((e) => setActionError(e.message))
               .finally(() => setBusy(false));
           },
@@ -204,13 +204,17 @@ export default function CompetitionScreen({
     setReacting(photo.id);
     setActionError("");
     try {
-      await request(`/competitions/${id}/photos/${photo.id}/reaction`, {
-        method: "PUT",
-        body: JSON.stringify({
-          emoji: photo.my_reaction === emoji ? null : emoji,
-        }),
-      });
-      await refresh();
+      const updated = await request<Photo>(
+        `/competitions/${id}/photos/${photo.id}/reaction`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            emoji: photo.my_reaction === emoji ? null : emoji,
+          }),
+        },
+      );
+      replacePhoto(updated);
+      if (!connected) void refresh();
     } catch (e) {
       setActionError((e as Error).message);
     } finally {

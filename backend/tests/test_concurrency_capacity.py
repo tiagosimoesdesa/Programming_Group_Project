@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -31,3 +32,32 @@ def test_concurrent_live_clients_share_one_revision_read(monkeypatch):
 
     assert revisions == ["shared-event:revision"] * 25
     assert calls == 1
+
+
+def test_live_revision_shares_an_in_flight_refresh(monkeypatch):
+    calls = []
+    release = threading.Event()
+
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+
+        def read(event_id):
+            calls.append(event_id)
+            loop.call_soon_threadsafe(started.set)
+            assert release.wait(5)
+            return "7:-1"
+
+        monkeypatch.setattr(main, "_cached_live_revision", read)
+        clients = [asyncio.create_task(main.live_revision("refreshing-event")) for _ in range(40)]
+        try:
+            await asyncio.wait_for(started.wait(), timeout=5)
+            clients[0].cancel()
+        finally:
+            release.set()
+        results = await asyncio.gather(*clients, return_exceptions=True)
+        assert isinstance(results[0], asyncio.CancelledError)
+        assert results[1:] == ["7:-1"] * 39
+
+    asyncio.run(scenario())
+    assert calls == ["refreshing-event"]

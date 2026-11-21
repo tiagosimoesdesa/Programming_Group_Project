@@ -44,6 +44,9 @@ def current_user(auth: HTTPAuthorizationCredentials | None = Depends(bearer), db
     user = db.get(User, decode(auth.credentials, "access")["sub"])
     if not user:
         raise HTTPException(401, "Account not found")
+    # Authentication and the route run in separate worker calls. Don't hold a
+    # pooled connection while the authenticated request waits for its route.
+    db.commit()
     return user
 
 

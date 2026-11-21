@@ -36,6 +36,9 @@ export class ApiError extends Error {
 
 async function raw(path: string, options: RequestInit = {}) {
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  options.signal?.addEventListener("abort", abort);
+  if (options.signal?.aborted) abort();
   const timeout = setTimeout(() => controller.abort(), 65000);
   try {
     const response = await fetch(`${BASE}${path}`, {
@@ -60,6 +63,7 @@ async function raw(path: string, options: RequestInit = {}) {
     );
   } finally {
     clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abort);
   }
 }
 
@@ -134,6 +138,7 @@ export async function request<T>(
   options: RequestInit = {},
   retry = true,
 ): Promise<T> {
+  const sentTokens = tokens;
   try {
     return await raw(path, {
       ...options,
@@ -142,12 +147,20 @@ export async function request<T>(
           ? { "Content-Type": "application/json" }
           : {}),
         ...options.headers,
-        ...(tokens ? { Authorization: `Bearer ${tokens.access_token}` } : {}),
+        ...(sentTokens
+          ? { Authorization: `Bearer ${sentTokens.access_token}` }
+          : {}),
       },
     });
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401 && retry && tokens) {
-      await refresh();
+    if (
+      error instanceof ApiError &&
+      error.status === 401 &&
+      retry &&
+      tokens &&
+      !options.signal?.aborted
+    ) {
+      if (tokens === sentTokens) await refresh();
       return request(path, options, false);
     }
     throw error;
@@ -188,9 +201,10 @@ export async function logout() {
   await save(null);
 }
 
-export async function liveToken() {
-  await request<Profile>("/me");
-  return tokens?.access_token;
+export async function liveToken(verify: boolean) {
+  if (verify) await request<Profile>("/me");
+  if (!tokens) throw new ApiError(401, "Please sign in again.");
+  return tokens.access_token;
 }
 export const post = <T>(path: string, body?: unknown) =>
   request<T>(path, {

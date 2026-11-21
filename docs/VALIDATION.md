@@ -2,6 +2,21 @@
 
 Automated checks were run on Windows during implementation. Physical-device checks remain in `DEVICE_TESTS.md`.
 
+## Multiplayer performance — 21 November 2026
+
+- The timed browser rehearsal used two independent Chrome sessions, the compiled Expo web app, the real local API and WebSockets, and synthetic camera input. It exercised Classic joining, photo capture and posting, reactions, ranks, finishing and recap, Party challenge submission and approval, and private Battle team selection, starting, and photo visibility. The longest measured button-to-visible action was 512 ms. The guest saw the Classic check-in within 633 ms of the host starting the upload.
+- Each load scenario used a new SQLite database and synthetic photos. Every join, upload, feed read, WebSocket operation, and final state check completed successfully. Each player received exactly one check-in point. The 25- and 40-player scenarios uploaded 624 KB photo pairs and also ran simultaneous sign-ins. The 60-player scenario used 124 KB pairs.
+
+| Concurrent players | Join p95 | Feed read p95 | Live notice p95 | Photo upload p95 | Final view refresh p95 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 25 | 413 ms | 859 ms | 360 ms | 1,142 ms | 1,178 ms |
+| 40 | 680 ms | 601 ms | 350 ms | 2,063 ms | 1,231 ms |
+| 60 | 873 ms | 989 ms | 576 ms | 2,550 ms | 3,342 ms |
+
+- The 40-player scenario measured feed-read p95 of 2,032 ms during uploads and 1,419 ms during sign-ins. Those bursts still exceed the one-second target. The table measures the live notice and final view from the start of the host's finish request.
+- Pytest reported `41 passed, 1 warning`. Alembic reported `No new upgrade operations detected.` OpenAPI and generated TypeScript had no content changes. `npm run typecheck` and the iOS, Android, and web exports completed successfully. Expo confirmed compatibility using its installed SDK map offline.
+- Hosted Render/Supabase timing and physical iPhone and Android acceptance remain pending. Before the presentation, open the deployed `/health` endpoint and allow the free Render service to wake if it has been idle. [Render free service behavior](https://render.com/docs/free#spinning-down-on-idle)
+
 ## Persistent browser sessions — 19 November 2026
 
 - Added web-only register, login, refresh, and logout endpoints using a rotating, host-only `HttpOnly` refresh cookie; native SecureStore authentication remains unchanged.

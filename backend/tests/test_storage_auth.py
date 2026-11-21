@@ -1,3 +1,6 @@
+import pytest
+from fastapi import HTTPException
+
 from app import storage
 from app.config import settings
 
@@ -66,3 +69,24 @@ def test_private_photo_urls_are_batch_signed_and_cached(monkeypatch):
     }
     assert rear.endswith("/object/sign/beerreal/events/a/rear.jpg?token=test")
     assert front.endswith("/object/sign/beerreal/events/a/front.jpg?token=test")
+
+
+def test_malformed_signed_photo_batch_returns_retryable_error_without_caching(monkeypatch):
+    paths = ["events/b/rear.jpg", "events/b/front.jpg"]
+    fake = FakeStorageClient()
+    payload = [
+        {"path": paths[0], "signedURL": "/object/sign/beerreal/events/b/rear.jpg?token=test"},
+        None,
+    ]
+    monkeypatch.setattr(settings, "storage_mode", "supabase")
+    monkeypatch.setattr(storage, "_signed_urls", {})
+    monkeypatch.setattr(storage, "_storage_client", fake)
+    with monkeypatch.context() as failed_signing:
+        failed_signing.setattr(fake, "post", lambda *args, **kwargs: FakeResponse(payload))
+        with pytest.raises(HTTPException) as response:
+            storage.prime_photo_urls(paths)
+        assert response.value.status_code == 503
+        assert not storage._signed_urls
+
+    storage.prime_photo_urls(paths)
+    assert fake.calls[0][1]["json"]["paths"] == paths

@@ -143,7 +143,9 @@ export default function CameraScreen({
               ? "Review photos"
               : rear
                 ? "Take a selfie"
-                : "Photograph your drink"}
+                : countBeers
+                  ? "Photograph your drink"
+                  : "Photograph the challenge"}
           </Text>
           <Text style={s.body}>
             {name} ·{" "}
@@ -151,7 +153,9 @@ export default function CameraScreen({
               ? "Both photos, one check-in."
               : rear
                 ? "One selfie to complete the pair."
-                : "Take a fresh photo of your drink."}
+                : countBeers
+                  ? "Take a fresh photo of your drink."
+                  : "Take a fresh photo for this challenge."}
           </Text>
         </View>
         <View
@@ -407,7 +411,13 @@ export default function CameraScreen({
           </View>
         ) : (
           <Button
-            title={rear ? "Take selfie" : "Take drink photo"}
+            title={
+              rear
+                ? "Take selfie"
+                : countBeers
+                  ? "Take drink photo"
+                  : "Take challenge photo"
+            }
             icon="camera-outline"
             disabled={!active || !permission?.granted || !ready}
             loading={taking}

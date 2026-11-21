@@ -29,9 +29,7 @@ def validate_image(upload: UploadFile) -> bytes:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(raw)) as im:
-                if im.format not in {"JPEG", "PNG", "WEBP"}:
-                    raise ValueError()
+            with Image.open(io.BytesIO(raw), formats=("JPEG", "PNG", "WEBP")) as im:
                 im.load()
                 im = im.convert("RGB")
                 im.thumbnail((1600, 1600))
@@ -127,11 +125,17 @@ def prime_photo_urls(keys):
             results = response.json()
             if not isinstance(results, list) or len(results) != len(missing):
                 raise ValueError("Unexpected signed URL response")
+            requested = set(missing)
             signed_urls = {}
             for index, item in enumerate(results):
+                if not isinstance(item, dict):
+                    raise ValueError("Unexpected signed URL entry")
                 key = item.get("path") or missing[index]
                 signed = item.get("signedURL")
-                if item.get("error") or not signed:
+                if (
+                    item.get("error") or not isinstance(signed, str) or not signed.startswith("/")
+                    or not isinstance(key, str) or key not in requested or key in signed_urls
+                ):
                     raise ValueError("A photo URL could not be signed")
                 signed_urls[key] = (expires, f"{settings.supabase_url}/storage/v1{signed}")
             with _signed_urls_lock:

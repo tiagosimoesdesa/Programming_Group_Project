@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
-  Share,
   Text,
   View,
 } from "react-native";
 import { Detail, Photo, request } from "./api";
 import { APP_NAME } from "./Brand";
+import { shareInvitation } from "./shareInvitation";
 import type { components } from "./generated/api";
 import { Button, colors, ErrorText, formatJols, s } from "./ui";
 
@@ -28,6 +28,7 @@ export default function SocialPanel({
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [invitationCopied, setInvitationCopied] = useState(false);
   const ended = !!event.ended_at;
   const player = event.my_role !== "spectator";
   async function refresh() {
@@ -118,11 +119,20 @@ export default function SocialPanel({
                       title="Share spectator invitation"
                       secondary
                       onPress={() => {
-                        Share.share({
-                          message: `Watch “${event.name}” on ${APP_NAME}. Enter spectator code ${data.spectator_code}. This gives access to this night's photos and results.`,
-                        }).catch((e) => setError(e.message));
+                        setError("");
+                        setInvitationCopied(false);
+                        shareInvitation(
+                          `Watch “${event.name}” on ${APP_NAME}. Enter spectator code ${data.spectator_code}. This gives access to this night's photos and results.`,
+                        )
+                          .then(setInvitationCopied)
+                          .catch((e) => setError(e.message));
                       }}
                     />
+                    {invitationCopied && (
+                      <Text accessibilityLiveRegion="polite" style={s.small}>
+                        Invitation copied.
+                      </Text>
+                    )}
                   </>
                 ) : (
                   <Button

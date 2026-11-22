@@ -76,7 +76,7 @@ Camera access is offered after sign-in. A player may continue with **Later** and
 - Spectator codes for invited viewers who may watch and react but cannot post, vote, or enter standings.
 - Finished-night history, final standings, and first/last moments for every player.
 - Live updates through authenticated WebSockets, with polling fallback and foreground resynchronization.
-- A sourced daily celebration card on Tonight, prepared once per Lisbon calendar date with a guaranteed dated fallback when the optional provider is unavailable.
+- A daily celebration card on Tonight. OpenAI prepares a rolling seven-day buffer, and the backend has a bundled celebration for every Lisbon calendar date.
 
 ## Technology Stack
 
@@ -126,7 +126,7 @@ Put the generated value in `JWT_SECRET` inside `backend/.env`. Run `ipconfig`, f
 PUBLIC_URL=http://YOUR_PC_IP:8000
 ```
 
-Optionally set `OPENAI_API_KEY` to enable a sourced celebration for each Lisbon calendar date. The key belongs only in `backend/.env` or the Render backend environment; never put it in the mobile configuration. Without the key, or when the provider is unavailable, the backend still returns a sourced calendar fact calculated for that date; selected dates may use richer pre-verified celebration fallbacks.
+Set `OPENAI_API_KEY` in `backend/.env` or the Render API environment to enable OpenAI web search and prepare the next seven Lisbon dates. The bundled observance calendar supplies a celebration for the date when OpenAI is unavailable or the key is unset. The Tonight card displays the celebration title and fact.
 
 Keep the default SQLite database and `STORAGE_MODE=local`, then start the API:
 

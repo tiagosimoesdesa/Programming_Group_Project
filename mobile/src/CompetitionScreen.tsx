@@ -24,6 +24,7 @@ import {
   ErrorText,
   formatJols,
   Icon,
+  Input,
   s,
 } from "./ui";
 import { useCompetition } from "./useCompetition";
@@ -89,6 +90,10 @@ export default function CompetitionScreen({
   const [invitationCopied, setInvitationCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [battleClock, setBattleClock] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nightName, setNightName] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const ended = !!detail?.competition.ended_at;
   const isBattle = detail?.competition.mode === "battle" && !!detail.battle;
@@ -202,6 +207,27 @@ export default function CompetitionScreen({
         },
       ],
     );
+  }
+  async function renameNight() {
+    const name = nightName.trim();
+    if (!name) {
+      setNameError("Give your night a name.");
+      return;
+    }
+    setRenaming(true);
+    setNameError("");
+    try {
+      await request(`/competitions/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      await refresh();
+      setEditingName(false);
+    } catch (e) {
+      setNameError((e as Error).message);
+    } finally {
+      setRenaming(false);
+    }
   }
   async function react(photo: Photo, emoji: string) {
     if (reacting) return;
@@ -397,9 +423,25 @@ export default function CompetitionScreen({
                         : "Classic"}
                   </Text>
                 </View>
-                <Text accessibilityRole="header" style={s.h1}>
-                  {event.name}
-                </Text>
+                <View style={[s.row, { alignItems: "flex-start" }]}>
+                  <Text accessibilityRole="header" style={[s.h1, { flex: 1 }]}>
+                    {event.name}
+                  </Text>
+                  {event.host_id === me.id && (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Change night name"
+                      style={s.iconButton}
+                      onPress={() => {
+                        setNightName(event.name);
+                        setNameError("");
+                        setEditingName(true);
+                      }}
+                    >
+                      <Icon name="pencil-outline" />
+                    </Pressable>
+                  )}
+                </View>
                 {canShare && (
                   <Text selectable style={s.body}>
                     Invite code · {event.code}
@@ -715,6 +757,78 @@ export default function CompetitionScreen({
           />
         )}
       </ScrollView>
+      <Modal
+        visible={editingName}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!renaming) setEditingName(false);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "flex-end",
+            backgroundColor: "#000000BB",
+          }}
+        >
+          <View
+            style={{
+              padding: 24,
+              paddingBottom: 36,
+              gap: 18,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: colors.card,
+            }}
+          >
+            <View style={s.between}>
+              <Text accessibilityRole="header" style={s.h2}>
+                Change night name
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close name editor"
+                disabled={renaming}
+                style={s.iconButton}
+                onPress={() => setEditingName(false)}
+              >
+                <Icon name="close" />
+              </Pressable>
+            </View>
+            <Input
+              label="Night name"
+              value={nightName}
+              onChangeText={(value) => {
+                setNightName(value);
+                setNameError("");
+              }}
+              maxLength={60}
+              autoFocus
+              autoCapitalize="sentences"
+              returnKeyType="done"
+              onSubmitEditing={() => void renameNight()}
+            />
+            <ErrorText message={nameError} />
+            <View style={s.row}>
+              <Button
+                title="Cancel"
+                secondary
+                disabled={renaming}
+                style={{ flex: 1 }}
+                onPress={() => setEditingName(false)}
+              />
+              <Button
+                title="Save name"
+                loading={renaming}
+                disabled={!nightName.trim() || nightName.trim() === event.name}
+                style={{ flex: 1 }}
+                onPress={() => void renameNight()}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={!!expanded}
         onRequestClose={() => setExpanded(null)}

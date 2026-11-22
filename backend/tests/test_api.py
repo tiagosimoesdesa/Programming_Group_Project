@@ -12,7 +12,7 @@ from sqlalchemy import event as sqlalchemy_event, select
 from app import storage
 from app.db import Session, engine
 from app.main import UPLOAD_CONCURRENCY, app
-from app.models import Competition, PartyRound, Submission
+from app.models import Competition, PartyRound, Submission, User
 from app.security import encode
 
 WEB_ORIGIN = "http://localhost:8082"
@@ -146,6 +146,33 @@ def test_throttle(client):
     for _ in range(15):
         assert client.post("/auth/login", json={"username": "unknown", "password": "incorrect-password"}).status_code == 401
     assert client.post("/auth/login", json={"username": "unknown", "password": "incorrect-password"}).status_code == 429
+
+
+def test_host_can_change_night_name(client):
+    with Session() as db:
+        users = [User(username=name, password_hash="unused") for name in ("alex", "sam", "morgan")]
+        db.add_all(users)
+        db.commit()
+        host, guest, outsider = [
+            {"Authorization": f"Bearer {encode(user.id, 'access', 900)}"}
+            for user in users
+        ]
+    night = event(client, host)
+    path = f"/competitions/{night['id']}"
+    client.post("/competitions/join", headers=guest, json={"code": night["code"]})
+    previous_revision = client.get(path, headers=host).json()["competition"]["revision"]
+
+    renamed = client.put(path, headers=host, json={"name": "  Saturday celebration  "})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Saturday celebration"
+    assert renamed.json()["revision"] == previous_revision + 1
+    assert client.get(path, headers=guest).json()["competition"]["name"] == "Saturday celebration"
+
+    assert client.put(path, headers=guest, json={"name": "Guest rename"}).status_code == 403
+    assert client.put(path, headers=outsider, json={"name": "Outsider rename"}).status_code == 404
+    assert client.put(path, headers=host, json={"name": "   "}).status_code == 422
+    assert client.put(path, headers=host, json={"name": "x" * 61}).status_code == 422
+    assert client.get(path, headers=host).json()["competition"]["name"] == "Saturday celebration"
 
 
 def test_full_event_flow_and_privacy(client):

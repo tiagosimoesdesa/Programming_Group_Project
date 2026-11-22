@@ -66,6 +66,18 @@ class CreateCompetition(BaseModel):
             raise ValueError("Team names must be different")
         return value
 
+
+class UpdateCompetition(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+    @field_validator("name")
+    @classmethod
+    def trim(cls, value):
+        if not value.strip():
+            raise ValueError("Give your night a name")
+        return value.strip()
+
+
 class JoinCompetition(BaseModel):
     code: str = Field(pattern=r"^(?:[A-Za-z0-9]{8}|[A-Za-z0-9]{10})$")
 

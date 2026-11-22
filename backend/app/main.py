@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
 from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
-from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut
+from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition
 from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
 
@@ -398,6 +398,17 @@ def create_event(body: CreateCompetition, user: User = Depends(current_user), db
         except IntegrityError:
             db.rollback()
     raise HTTPException(503, "Please try creating the competition again")
+
+
+@app.put("/competitions/{event_id}", response_model=EventOut)
+def update_event(event_id: str, body: UpdateCompetition, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event = member_event(db, event_id, user.id)
+    if event.host_id != user.id:
+        raise HTTPException(403, "Only the host can change the night name")
+    event = lock_event(db, event_id)
+    event.name = body.name
+    db.commit()
+    return event_out(db, event, user.id)
 
 
 @app.post("/competitions/join", response_model=EventOut)

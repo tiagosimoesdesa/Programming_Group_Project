@@ -76,6 +76,7 @@ Camera access is offered after sign-in. A player may continue with **Later** and
 - Spectator codes for invited viewers who may watch and react but cannot post, vote, or enter standings.
 - Finished-night history, final standings, and first/last moments for every player.
 - Live updates through authenticated WebSockets, with polling fallback and foreground resynchronization.
+- A sourced daily celebration card on Tonight, prepared once per Lisbon calendar date with a guaranteed dated fallback when the optional provider is unavailable.
 
 ## Technology Stack
 
@@ -89,6 +90,7 @@ Camera access is offered after sign-in. A player may continue with **Later** and
 | Authentication | Argon2, short-lived access tokens, rotating refresh tokens | Password protection and session security |
 | Hosting | Render | Public FastAPI service and Expo web application |
 | API contract | FastAPI OpenAPI and openapi-typescript | Synchronized backend schema and generated TypeScript client |
+| Daily sourced content | OpenAI Responses API with web search | Optional backend-only selection of one verified celebration fact per Lisbon calendar date |
 
 The teaching staff approved the Python/FastAPI backend with a React Native/TypeScript frontend because the project needs a camera-first interface and real-time multi-user interaction. Do not change this architecture without a documented team decision and teaching-staff approval.
 
@@ -123,6 +125,8 @@ Put the generated value in `JWT_SECRET` inside `backend/.env`. Run `ipconfig`, f
 ```text
 PUBLIC_URL=http://YOUR_PC_IP:8000
 ```
+
+Optionally set `OPENAI_API_KEY` to enable a sourced celebration for each Lisbon calendar date. The key belongs only in `backend/.env` or the Render backend environment; never put it in the mobile configuration. Without the key, or when the provider is unavailable, the backend still returns a sourced calendar fact calculated for that date; selected dates may use richer pre-verified celebration fallbacks.
 
 Keep the default SQLite database and `STORAGE_MODE=local`, then start the API:
 
@@ -271,6 +275,7 @@ Apply `uv run alembic upgrade head` before starting an updated backend:
 - Migration `0006` preserves historical quantities and treats older drinks as regular beers.
 - Migration `0007` adds Battle settings and team membership.
 - Migration `0008` reconciles historical Party approvals with their recorded votes.
+- Migration `0009` stores one verified daily celebration card per calendar date.
 
 ### Production deployment
 

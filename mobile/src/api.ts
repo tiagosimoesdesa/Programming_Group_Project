@@ -10,6 +10,7 @@ export type Standing = components["schemas"]["Standing"];
 export type Photo = components["schemas"]["PhotoOut"];
 export type Party = components["schemas"]["PartyOut"];
 export type PartyRound = components["schemas"]["PartyRoundOut"];
+export type DailyCelebration = components["schemas"]["DailyCelebrationOut"];
 type Tokens = components["schemas"]["Tokens"];
 type AccessToken = components["schemas"]["AccessToken"];
 type Session = AccessToken & { refresh_token?: string };

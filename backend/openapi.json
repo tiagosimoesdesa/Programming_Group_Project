@@ -21,6 +21,29 @@
         }
       }
     },
+    "/daily-celebration": {
+      "get": {
+        "summary": "Daily Celebration",
+        "operationId": "daily_celebration_daily_celebration_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyCelebrationOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/auth/register": {
       "post": {
         "summary": "Register",
@@ -1973,6 +1996,45 @@
           "password"
         ],
         "title": "Credentials"
+      },
+      "DailyCelebrationOut": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "display_date": {
+            "type": "string",
+            "title": "Display Date"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "fact": {
+            "type": "string",
+            "title": "Fact"
+          },
+          "source_title": {
+            "type": "string",
+            "title": "Source Title"
+          },
+          "source_url": {
+            "type": "string",
+            "pattern": "^https://",
+            "title": "Source Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "display_date",
+          "title",
+          "fact",
+          "source_title",
+          "source_url"
+        ],
+        "title": "DailyCelebrationOut"
       },
       "EventDetail": {
         "properties": {

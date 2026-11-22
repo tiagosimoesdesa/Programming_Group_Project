@@ -4,6 +4,8 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -15,8 +17,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
-from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
-from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition, UsernameInput
+from .daily_celebration import build_daily_celebration
+from .models import Competition, DailyCelebration, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
+from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, DailyCelebrationOut, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition, UsernameInput
 from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
 
@@ -63,6 +66,7 @@ _live_revision_cache: dict[str, tuple[float, str]] = {}
 _live_revision_locks: dict[str, threading.Lock] = {}
 _live_revision_guard = threading.Lock()
 _live_revision_reads: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[str]] = {}
+_daily_celebration_lock = threading.Lock()
 
 
 def _read_live_revision(event_id: str):
@@ -119,6 +123,22 @@ async def live_revision(event_id: str):
 
 def profile(user):
     return {"id": user.id, "username": user.username, "avatar_url": storage.photo_url(user.avatar)}
+
+
+def current_celebration_date():
+    return datetime.now(ZoneInfo(settings.daily_celebration_timezone)).date()
+
+
+def celebration_out(row):
+    day = datetime.strptime(row.date, "%Y-%m-%d").date()
+    return {
+        "date": row.date,
+        "display_date": day.strftime("%d %b").lstrip("0").upper(),
+        "title": row.title,
+        "fact": row.fact,
+        "source_title": row.source_title,
+        "source_url": row.source_url,
+    }
 
 
 def battle_ends_at(event):
@@ -223,6 +243,30 @@ def clear_web_refresh_cookie(response: Response):
 def health(db: DbSession = Depends(get_db)):
     db.execute(select(1))
     return {"status": "ok"}
+
+
+@app.get("/daily-celebration", response_model=DailyCelebrationOut)
+def daily_celebration(_user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    day = current_celebration_date()
+    key = day.isoformat()
+    row = db.get(DailyCelebration, key)
+    if row:
+        return celebration_out(row)
+    with _daily_celebration_lock:
+        row = db.get(DailyCelebration, key)
+        if row:
+            return celebration_out(row)
+        content = build_daily_celebration(day)
+        row = DailyCelebration(date=key, **content)
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            row = db.get(DailyCelebration, key)
+            if row is None:
+                raise
+        return celebration_out(row)
 
 
 def register_account(body: Register, request: Request):

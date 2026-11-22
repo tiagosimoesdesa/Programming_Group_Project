@@ -232,3 +232,12 @@ class EventDetail(BaseModel):
     next_cursor: str | None
     recap: list[RecapMoment] = Field(default_factory=list)
     battle: BattleOut | None = None
+
+
+class DailyCelebrationOut(BaseModel):
+    date: str
+    display_date: str
+    title: str
+    fact: str
+    source_title: str
+    source_url: str = Field(pattern=r"^https://")

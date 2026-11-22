@@ -119,3 +119,13 @@ class LoginAttempt(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     count: Mapped[int] = mapped_column(default=0)
     window: Mapped[int]
+
+
+class DailyCelebration(Base):
+    __tablename__ = "daily_celebrations"
+    date: Mapped[str] = mapped_column(String(10), primary_key=True)
+    title: Mapped[str] = mapped_column(String(140))
+    fact: Mapped[str] = mapped_column(String(360))
+    source_title: Mapped[str] = mapped_column(String(180))
+    source_url: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[int] = mapped_column(default=lambda: int(time.time()))

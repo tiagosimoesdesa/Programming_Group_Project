@@ -28,6 +28,12 @@ services:
         sync: false
       - key: SUPABASE_BUCKET
         value: beerreal
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_DAILY_FACT_MODEL
+        value: gpt-6.2-astra
+      - key: DAILY_CELEBRATION_TIMEZONE
+        value: Europe/Lisbon
 
   - type: web
     name: beerreal-web

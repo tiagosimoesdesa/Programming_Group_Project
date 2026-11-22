@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     supabase_bucket: str = "beerreal"
     cors_origins: list[str] = ["http://localhost:8082", "http://127.0.0.1:8082"]
     password_hash_concurrency: int = 2
+    openai_api_key: str = ""
+    openai_daily_fact_model: str = "gpt-6.2-astra"
+    daily_celebration_timezone: str = "Europe/Lisbon"
 
     @property
     def supabase_admin_key(self) -> str:

@@ -18,7 +18,7 @@ from app.models import DailyCelebration
 def auth(client, username="daily_fact_user"):
     response = client.post(
         "/auth/register",
-        json={"username": username, "password": "a-secure-password", "legal_age": True},
+        json={"username": username, "password": "a-secure-password-1", "legal_age": True},
     )
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

@@ -36,9 +36,15 @@ export default function AuthScreen({
   const [error, setError] = useState("");
   const [focused, setFocused] = useState<"username" | "password" | null>(null);
   const passwordInput = useRef<TextInputInstance>(null);
+  const passwordLengthValid = password.length >= 7;
+  const passwordHasNumber = /\d/.test(password);
+  const passwordHasSpecial = /[^a-zA-Z0-9\s]/.test(password);
+  const passwordValid =
+    passwordLengthValid &&
+    (!register || (passwordHasNumber && passwordHasSpecial));
   const valid =
     /^[a-zA-Z0-9_]{3,24}$/.test(username.trim()) &&
-    password.length >= 10 &&
+    passwordValid &&
     (!register || adult);
   useEffect(() => {
     if (!loadingIntro) return;
@@ -138,9 +144,14 @@ export default function AuthScreen({
               <TextInput
                 ref={passwordInput}
                 accessibilityLabel="Password"
+                accessibilityHint={
+                  register
+                    ? "At least 7 characters, including a number and a special character"
+                    : undefined
+                }
                 value={password}
                 onChangeText={setPassword}
-                placeholder={register ? "At least 10 characters" : "Password"}
+                placeholder={register ? "At least 7 characters" : "Password"}
                 placeholderTextColor={colors.muted}
                 selectionColor={colors.yellow}
                 secureTextEntry={!showPassword}
@@ -172,6 +183,12 @@ export default function AuthScreen({
                 />
               </Pressable>
             </View>
+            {register && (
+              <Text style={a.hint}>
+                Use at least 7 characters, including a number and a special
+                character.
+              </Text>
+            )}
           </View>
           {register && (
             <Pressable
@@ -266,6 +283,11 @@ const a = StyleSheet.create({
     minHeight: 53,
     alignItems: "center",
     justifyContent: "center",
+  },
+  hint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   ageRow: {
     flexDirection: "row",

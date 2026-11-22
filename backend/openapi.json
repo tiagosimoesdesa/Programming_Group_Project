@@ -1986,7 +1986,7 @@
           "password": {
             "type": "string",
             "maxLength": 128,
-            "minLength": 10,
+            "minLength": 7,
             "title": "Password"
           }
         },
@@ -2606,7 +2606,7 @@
           "password": {
             "type": "string",
             "maxLength": 128,
-            "minLength": 10,
+            "minLength": 7,
             "title": "Password"
           },
           "legal_age": {

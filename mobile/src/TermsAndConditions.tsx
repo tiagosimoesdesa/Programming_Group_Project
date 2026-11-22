@@ -34,10 +34,15 @@ export function LegalSections({
   compactHeadings?: boolean;
 }) {
   return (
-    <View style={l.document}>
-      <Text style={[s.body, l.intro]}>{intro}</Text>
+    <View style={[l.document, compactHeadings && l.termDocument]}>
+      <Text style={[s.body, l.intro, compactHeadings && l.termBody]}>
+        {intro}
+      </Text>
       {sections.map((section) => (
-        <View key={section.title} style={l.section}>
+        <View
+          key={section.title}
+          style={[l.section, compactHeadings && l.termSection]}
+        >
           <Text
             accessibilityRole="header"
             style={[s.h2, compactHeadings && l.termSectionTitle]}
@@ -45,16 +50,29 @@ export function LegalSections({
             {section.title}
           </Text>
           {section.paragraphs?.map((paragraph) => (
-            <Text key={paragraph} style={s.body}>
+            <Text
+              key={paragraph}
+              style={[s.body, compactHeadings && l.termBody]}
+            >
               {paragraph}
             </Text>
           ))}
           {section.bullets?.map((bullet) => (
-            <View key={bullet} style={l.bulletRow}>
-              <Text accessibilityElementsHidden style={l.bullet}>
+            <View
+              key={bullet}
+              style={[l.bulletRow, compactHeadings && l.termBulletRow]}
+            >
+              <Text
+                accessibilityElementsHidden
+                style={[l.bullet, compactHeadings && l.termBullet]}
+              >
                 •
               </Text>
-              <Text style={[s.body, l.bulletText]}>{bullet}</Text>
+              <Text
+                style={[s.body, l.bulletText, compactHeadings && l.termBody]}
+              >
+                {bullet}
+              </Text>
             </View>
           ))}
         </View>
@@ -274,10 +292,15 @@ const l = StyleSheet.create({
   intro: { fontWeight: "700" },
   section: { gap: 10 },
   termSectionTitle: {
-    fontSize: 18,
-    lineHeight: 23,
-    letterSpacing: -0.25,
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.15,
   },
+  termDocument: { gap: 12 },
+  termSection: { gap: 7 },
+  termBody: { fontSize: 13, lineHeight: 18 },
+  termBulletRow: { gap: 7 },
+  termBullet: { fontSize: 16, lineHeight: 18 },
   bulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 9 },
   bullet: { color: colors.yellow, fontSize: 19, lineHeight: 24 },
   bulletText: { flex: 1 },

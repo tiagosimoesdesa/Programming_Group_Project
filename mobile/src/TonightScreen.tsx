@@ -120,34 +120,60 @@ function ActiveNight({
 export function NightListItem({
   event,
   onOpen,
+  onOptions,
 }: {
   event: Competition;
   onOpen: () => void;
+  onOptions?: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onOpen}
-      style={({ pressed }) => [s.card, s.row, pressed && { opacity: 0.8 }]}
-    >
-      <View style={s.iconButton}>
-        <Icon
-          name={event.ended_at ? "albums-outline" : "moon-outline"}
-          color={colors.yellow}
-        />
-      </View>
-      <View style={{ flex: 1, gap: 3 }}>
-        <Text style={s.h3}>{event.name}</Text>
-        <Text style={s.small}>
-          {modeLabels[event.mode]} · {friends(event.participants)} ·{" "}
-          {new Date(event.created_at * 1000).toLocaleDateString([], {
-            month: "short",
-            day: "numeric",
-          })}
-        </Text>
-      </View>
-      <Icon name="chevron-forward" color={colors.yellow} size={18} />
-    </Pressable>
+    <View style={[s.card, { padding: 0, gap: 0, flexDirection: "row" }]}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onOpen}
+        style={({ pressed }) => [
+          s.row,
+          { flex: 1, padding: 20 },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <View style={s.iconButton}>
+          <Icon
+            name={event.ended_at ? "albums-outline" : "moon-outline"}
+            color={colors.yellow}
+          />
+        </View>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={s.h3}>{event.name}</Text>
+          <Text style={s.small}>
+            {modeLabels[event.mode]} · {friends(event.participants)} ·{" "}
+            {new Date(event.created_at * 1000).toLocaleDateString([], {
+              month: "short",
+              day: "numeric",
+            })}
+          </Text>
+        </View>
+        {!onOptions && (
+          <Icon name="chevron-forward" color={colors.yellow} size={18} />
+        )}
+      </Pressable>
+      {onOptions && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Options for ${event.name}`}
+          onPress={onOptions}
+          style={{
+            minWidth: 54,
+            alignItems: "center",
+            justifyContent: "center",
+            borderLeftWidth: 1,
+            borderLeftColor: colors.line,
+          }}
+        >
+          <Icon name="ellipsis-horizontal" color={colors.yellow} />
+        </Pressable>
+      )}
+    </View>
   );
 }
 

@@ -44,6 +44,8 @@ class Membership(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     role: Mapped[str] = mapped_column(String(16), default="player", server_default="player")
     team: Mapped[str | None] = mapped_column(String(1))
+    history_hidden_at: Mapped[int | None]
+    history_removed_at: Mapped[int | None]
 
 
 class PartyRound(Base):

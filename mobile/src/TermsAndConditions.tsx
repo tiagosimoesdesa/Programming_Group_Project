@@ -27,16 +27,21 @@ import { Button, colors, ErrorText, Icon, s } from "./ui";
 export function LegalSections({
   intro,
   sections,
+  compactHeadings = false,
 }: {
   intro: string;
   sections: readonly LegalSection[];
+  compactHeadings?: boolean;
 }) {
   return (
     <View style={l.document}>
       <Text style={[s.body, l.intro]}>{intro}</Text>
       {sections.map((section) => (
         <View key={section.title} style={l.section}>
-          <Text accessibilityRole="header" style={s.h2}>
+          <Text
+            accessibilityRole="header"
+            style={[s.h2, compactHeadings && l.termSectionTitle]}
+          >
             {section.title}
           </Text>
           {section.paragraphs?.map((paragraph) => (
@@ -66,7 +71,11 @@ export function TermsDocument() {
         <Text style={s.h3}>Version {TERMS_VERSION}</Text>
         <Text style={s.small}>Effective {TERMS_EFFECTIVE_DATE}</Text>
       </View>
-      <LegalSections intro={TERMS_INTRO} sections={TERMS_SECTIONS} />
+      <LegalSections
+        intro={TERMS_INTRO}
+        sections={TERMS_SECTIONS}
+        compactHeadings
+      />
     </View>
   );
 }
@@ -264,6 +273,11 @@ const l = StyleSheet.create({
   document: { gap: 18 },
   intro: { fontWeight: "700" },
   section: { gap: 10 },
+  termSectionTitle: {
+    fontSize: 18,
+    lineHeight: 23,
+    letterSpacing: -0.25,
+  },
   bulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 9 },
   bullet: { color: colors.yellow, fontSize: 19, lineHeight: 24 },
   bulletText: { flex: 1 },

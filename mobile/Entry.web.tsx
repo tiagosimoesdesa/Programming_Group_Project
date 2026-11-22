@@ -5,6 +5,7 @@ import App from "./App";
 import AuthScreen from "./src/AuthScreen";
 import { APP_NAME } from "./src/Brand";
 import LoadingScreen from "./src/LoadingScreen";
+import { TERMS_DECISION_KEY } from "./src/legalStorage";
 import { colors } from "./src/ui";
 
 type Screen = "welcome" | "login" | "register" | "app";
@@ -279,9 +280,11 @@ function DesktopPreview() {
 }
 
 export default function WebEntry() {
+  const params = new URLSearchParams(window.location.search);
+  if (process.env.NODE_ENV !== "production" && params.get("resetTerms") === "1")
+    window.localStorage.removeItem(TERMS_DECISION_KEY);
   const showStudio =
-    process.env.NODE_ENV !== "production" ||
-    new URLSearchParams(window.location.search).get("studio") === "1";
+    process.env.NODE_ENV !== "production" || params.get("studio") === "1";
   return showStudio ? <DesktopPreview /> : <App />;
 }
 

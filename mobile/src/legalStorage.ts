@@ -2,7 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { TERMS_VERSION } from "./legal";
 
-const TERMS_DECISION_KEY = "count-the-jols.terms-decision";
+export const TERMS_DECISION_KEY = "count-the-jols.terms-decision";
 
 export type TermsDecision = {
   status: "accepted" | "declined";

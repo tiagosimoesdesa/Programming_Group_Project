@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import quote
 import httpx
 from fastapi import HTTPException, UploadFile
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from .config import settings
 from .security import encode
 
@@ -30,7 +30,7 @@ def validate_image(upload: UploadFile) -> bytes:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(raw), formats=("JPEG", "PNG", "WEBP")) as im:
-                im.load()
+                ImageOps.exif_transpose(im, in_place=True)
                 im = im.convert("RGB")
                 im.thumbnail((1600, 1600))
                 output = io.BytesIO()

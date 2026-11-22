@@ -1,4 +1,5 @@
 from typing import Literal
+from unicodedata import category
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -21,9 +22,13 @@ class Register(Credentials):
     @field_validator("password")
     @classmethod
     def password_requirements(cls, value):
-        if not any(character.isdigit() for character in value):
+        categories = [category(character) for character in value]
+        if not any(kind.startswith("N") for kind in categories):
             raise ValueError("Password must include a number")
-        if not any(not character.isalnum() and not character.isspace() for character in value):
+        if not any(
+            kind[0] not in ("L", "N") and not character.isspace()
+            for character, kind in zip(value, categories)
+        ):
             raise ValueError("Password must include a special character")
         return value
 

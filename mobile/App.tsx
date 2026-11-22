@@ -69,6 +69,15 @@ const BATTLE_DURATIONS = [
   [32400, "9 hours"],
   [36000, "10 hours"],
 ] as const;
+const MAX_NIGHT_NAME = 60;
+
+function battleName(firstTeam: string, secondTeam: string) {
+  const name = `${firstTeam} vs ${secondTeam}`;
+  const characters = Array.from(name);
+  return characters.length <= MAX_NIGHT_NAME
+    ? name
+    : characters.slice(0, MAX_NIGHT_NAME - 1).join("") + "…";
+}
 
 export default function App() {
   return (
@@ -115,6 +124,10 @@ function Root() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showHiddenHistory, setShowHiddenHistory] = useState(false);
+  const [historyChoice, setHistoryChoice] = useState<{
+    eventId: string;
+    confirmRemoval: boolean;
+  } | null>(null);
   const [pending, setPending] = useState<Record<string, Capture | null>>({});
   const [offerCameraSetup, setOfferCameraSetup] = useState(false);
   const profileRevision = useRef(0);
@@ -148,6 +161,7 @@ function Root() {
       setMe(null);
       setSelected(null);
       setSettingsPage(null);
+      setHistoryChoice(null);
       setEvents([]);
       setPending({});
     });
@@ -217,35 +231,7 @@ function Root() {
     }
   }
   function historyOptions(event: Competition) {
-    if (busy) return;
-    showAlert(
-      event.name,
-      "Choose how this night appears in your personal history.",
-      [
-        {
-          text: event.hidden ? "Restore" : "Hide",
-          onPress: () => void setHistoryHidden(event, !event.hidden),
-        },
-        {
-          text: "Remove from my history",
-          style: "destructive",
-          onPress: () =>
-            showAlert(
-              "Remove this memory?",
-              "This removes the night permanently from your account. It will remain unchanged for everyone else.",
-              [
-                { text: "Keep it", style: "cancel" },
-                {
-                  text: "Remove",
-                  style: "destructive",
-                  onPress: () => void removeFromHistory(event),
-                },
-              ],
-            ),
-        },
-        { text: "Cancel", style: "cancel" },
-      ],
-    );
+    if (!busy) setHistoryChoice({ eventId: event.id, confirmRemoval: false });
   }
   async function saveEvent() {
     setBusy(true);
@@ -259,7 +245,7 @@ function Root() {
           : "/competitions/join",
         creatingBattle
           ? {
-              name: `${teamA.trim()} vs ${teamB.trim()}`,
+              name: battleName(teamA.trim(), teamB.trim()),
               mode: "battle",
               battle_duration_seconds: battleDuration,
               battle_points_visible: battlePointsVisible,
@@ -390,6 +376,9 @@ function Root() {
   const active = events.filter((e) => !e.ended_at);
   const history = events.filter((e) => e.ended_at && !e.hidden);
   const hiddenHistory = events.filter((e) => e.ended_at && e.hidden);
+  const historyTarget = events.find(
+    (event) => event.id === historyChoice?.eventId,
+  );
   const content = selected ? (
     <CompetitionScreen
       key={selected}
@@ -614,6 +603,88 @@ function Root() {
         ))}
       </View>
       <Modal
+        visible={!!historyTarget}
+        transparent
+        onRequestClose={() => setHistoryChoice(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#000000BB",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          {historyTarget && (
+            <ScrollView
+              style={[
+                s.card,
+                {
+                  alignSelf: "center",
+                  flexGrow: 0,
+                  maxHeight: "90%",
+                  maxWidth: 440,
+                  width: "100%",
+                },
+              ]}
+            >
+              <View style={{ gap: 12 }} accessibilityViewIsModal>
+                <Text accessibilityRole="header" style={s.h3}>
+                  {historyChoice?.confirmRemoval
+                    ? "Remove this memory?"
+                    : historyTarget.name}
+                </Text>
+                {historyChoice?.confirmRemoval ? (
+                  <>
+                    <Text style={s.body}>
+                      This permanently removes the night from your personal
+                      history.
+                    </Text>
+                    <Button
+                      title="Remove"
+                      onPress={() => {
+                        setHistoryChoice(null);
+                        void removeFromHistory(historyTarget);
+                      }}
+                    />
+                    <Button
+                      title="Keep it"
+                      secondary
+                      onPress={() => setHistoryChoice(null)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      title={historyTarget.hidden ? "Restore" : "Hide"}
+                      onPress={() => {
+                        setHistoryChoice(null);
+                        void setHistoryHidden(historyTarget, !historyTarget.hidden);
+                      }}
+                    />
+                    <Button
+                      title="Remove from my history"
+                      secondary
+                      onPress={() =>
+                        setHistoryChoice({
+                          eventId: historyTarget.id,
+                          confirmRemoval: true,
+                        })
+                      }
+                    />
+                    <Button
+                      title="Cancel"
+                      secondary
+                      onPress={() => setHistoryChoice(null)}
+                    />
+                  </>
+                )}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+      <Modal
         visible={!!sheet}
         transparent
         animationType="none"
@@ -714,7 +785,7 @@ function Root() {
                 }
                 value={value}
                 onChangeText={setValue}
-                maxLength={sheet === "create" ? 60 : 10}
+                maxLength={sheet === "create" ? MAX_NIGHT_NAME : 10}
                 autoCapitalize={sheet === "create" ? "sentences" : "characters"}
                 autoCorrect={false}
               />

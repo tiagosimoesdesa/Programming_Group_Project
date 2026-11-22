@@ -12,11 +12,20 @@ class UsernameInput(BaseModel):
 
 
 class Credentials(UsernameInput):
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=7, max_length=128)
 
 
 class Register(Credentials):
     legal_age: Literal[True]
+
+    @field_validator("password")
+    @classmethod
+    def password_requirements(cls, value):
+        if not any(character.isdigit() for character in value):
+            raise ValueError("Password must include a number")
+        if not any(not character.isalnum() and not character.isspace() for character in value):
+            raise ValueError("Password must include a special character")
+        return value
 
 
 class RefreshIn(BaseModel):

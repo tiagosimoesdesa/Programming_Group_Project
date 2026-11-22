@@ -52,6 +52,10 @@ def test_registration_and_auth(client):
     assert client.get("/me").status_code == 401
     assert client.post("/auth/register", json={"username": "ALEX", "password": "strong-password-123", "legal_age": True}).status_code == 409
     assert client.post("/auth/register", json={"username": "sam", "password": "strong-password-123", "legal_age": False}).status_code == 422
+    assert client.post("/auth/register", json={"username": "short", "password": "a1!", "legal_age": True}).status_code == 422
+    assert client.post("/auth/register", json={"username": "no_number", "password": "abcdef!", "legal_age": True}).status_code == 422
+    assert client.post("/auth/register", json={"username": "no_special", "password": "abcdef1", "legal_age": True}).status_code == 422
+    assert client.post("/auth/register", json={"username": "minimum", "password": "abcde1!", "legal_age": True}).status_code == 201
     assert client.post("/auth/login", json={"username": "alex", "password": "incorrect-password"}).status_code == 401
     assert client.post("/auth/login", json={"username": "ALEX", "password": "strong-password-123"}).status_code == 200
 

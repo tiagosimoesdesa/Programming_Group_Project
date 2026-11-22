@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
 from .models import Competition, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
-from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition
+from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition, UsernameInput
 from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
 
@@ -321,6 +321,17 @@ def web_logout(request: Request, response: Response, db: DbSession = Depends(get
 
 @app.get("/me", response_model=Profile)
 def me(user: User = Depends(current_user)):
+    return profile(user)
+
+
+@app.put("/me/username", response_model=Profile, responses={409: {"description": "Username is already taken"}})
+def rename_username(body: UsernameInput, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    user.username = body.username
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "That username is already taken")
     return profile(user)
 
 

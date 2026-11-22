@@ -5,6 +5,9 @@ These checks require the user's Android and iPhone. Automated tests cannot certi
 ## Accounts and layout
 
 - [ ] Both phones open `/health` and run the project in SDK-compatible Expo Go.
+- [ ] On a clean install/browser profile, Terms & Conditions block every normal screen; Accept stays disabled until the document end.
+- [ ] Decline shows the polite decision screen, survives a full close/reopen, and Review Terms & Conditions returns to the document without entering the app.
+- [ ] Accept survives a full close/reopen; an older stored version requires acceptance again; Settings → Terms & Conditions opens the same document without prompting.
 - [ ] Screens respect safe areas and large fonts; forms remain usable with the keyboard open.
 - [ ] Register requires legal-age self-attestation; duplicate usernames and wrong passwords show errors.
 - [ ] On the deployed web app, register or log in, reload and close/reopen the page, and confirm the session restores; then log out and confirm it does not return.

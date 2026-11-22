@@ -133,11 +133,12 @@ def test_host_can_change_night_name(client):
     night = event(client, host)
     path = f"/competitions/{night['id']}"
     client.post("/competitions/join", headers=guest, json={"code": night["code"]})
+    previous_revision = client.get(path, headers=host).json()["competition"]["revision"]
 
     renamed = client.put(path, headers=host, json={"name": "  Saturday celebration  "})
     assert renamed.status_code == 200, renamed.text
     assert renamed.json()["name"] == "Saturday celebration"
-    assert renamed.json()["revision"] == night["revision"] + 1
+    assert renamed.json()["revision"] == previous_revision + 1
     assert client.get(path, headers=guest).json()["competition"]["name"] == "Saturday celebration"
 
     assert client.put(path, headers=guest, json={"name": "Guest rename"}).status_code == 403

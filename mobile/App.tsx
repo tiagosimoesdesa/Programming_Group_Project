@@ -1,5 +1,5 @@
 import { showAlert } from "./src/confirm";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -38,6 +38,7 @@ import { BrandHeader } from "./src/Brand";
 import NightBackdrop from "./src/NightBackdrop";
 import TonightScreen, { NightListItem } from "./src/TonightScreen";
 import CompetitionScreen from "./src/CompetitionScreen";
+import SettingsScreen from "./src/SettingsScreen";
 import { Capture } from "./src/CameraScreen";
 import { CameraAccessProvider } from "./src/CameraAccess";
 import {
@@ -90,6 +91,7 @@ function Root() {
   const [bootError, setBootError] = useState("");
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"home" | "history" | "profile">("home");
+  const [settingsPage, setSettingsPage] = useState<"main" | "privacy" | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<
     "create" | "join" | "battle-menu" | "battle-create" | "battle-join" | null
@@ -109,13 +111,15 @@ function Root() {
   const [refreshing, setRefreshing] = useState(false);
   const [pending, setPending] = useState<Record<string, Capture | null>>({});
   const [offerCameraSetup, setOfferCameraSetup] = useState(false);
+  const profileRevision = useRef(0);
   const load = useCallback(async (signedIn = false) => {
+    const revision = profileRevision.current;
     const [person, nights] = await Promise.all([
       request<Profile>("/me"),
       request<Competition[]>("/competitions"),
     ]);
     if (signedIn) setOfferCameraSetup(true);
-    setMe(person);
+    if (revision === profileRevision.current) setMe(person);
     setEvents(nights);
     setError("");
   }, []);
@@ -133,9 +137,11 @@ function Root() {
   }, [load]);
   useEffect(() => {
     onAuthLost(() => {
+      profileRevision.current += 1;
       setOfferCameraSetup(false);
       setMe(null);
       setSelected(null);
+      setSettingsPage(null);
       setEvents([]);
       setPending({});
     });
@@ -151,6 +157,10 @@ function Root() {
   useEffect(() => {
     const back = BackHandler.addEventListener("hardwareBackPress", () => {
       if (selected) return false;
+      if (settingsPage) {
+        if (!busy) setSettingsPage(settingsPage === "privacy" ? "main" : null);
+        return true;
+      }
       if (tab !== "home") {
         setTab("home");
         return true;
@@ -158,7 +168,7 @@ function Root() {
       return false;
     });
     return () => back.remove();
-  }, [selected, tab]);
+  }, [busy, selected, settingsPage, tab]);
   async function reload() {
     setRefreshing(true);
     try {
@@ -205,6 +215,24 @@ function Root() {
       setBusy(false);
     }
   }
+  function updateProfile(profile: Profile) {
+    profileRevision.current += 1;
+    setMe((current) => current?.id === profile.id ? profile : current);
+  }
+  async function changeUsername(username: string) {
+    setBusy(true);
+    setError("");
+    try {
+      updateProfile(await request<Profile>("/me/username", {
+        method: "PUT",
+        body: JSON.stringify({ username }),
+      }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function changeAvatar() {
     setBusy(true);
     setError("");
@@ -229,7 +257,7 @@ function Root() {
       );
       const form = new FormData();
       form.append("photo", await imagePart(photo.uri, "avatar.jpg"));
-      setMe(
+      updateProfile(
         await request<Profile>("/me/avatar", { method: "PUT", body: form }),
       );
     } catch (e) {
@@ -250,9 +278,11 @@ function Root() {
             setBusy(true);
             logout()
               .then(() => {
+                profileRevision.current += 1;
                 setOfferCameraSetup(false);
                 setMe(null);
                 setSelected(null);
+                setSettingsPage(null);
                 setPending({});
                 setEvents([]);
                 setTab("home");
@@ -303,6 +333,24 @@ function Root() {
         setPending((old) => ({ ...old, [selected]: capture }))
       }
     />
+  ) : settingsPage ? (
+    <SettingsScreen
+      profile={me}
+      privacy={settingsPage === "privacy"}
+      busy={busy}
+      error={error}
+      onBack={() => {
+        setError("");
+        setSettingsPage(settingsPage === "privacy" ? "main" : null);
+      }}
+      onPrivacy={() => {
+        setError("");
+        setSettingsPage("privacy");
+      }}
+      onChangeUsername={(username) => void changeUsername(username)}
+      onChangeAvatar={() => void changeAvatar()}
+      onSignOut={signOut}
+    />
   ) : (
     <View style={s.root}>
       <NightBackdrop bubbles={tab === "home"} />
@@ -349,9 +397,23 @@ function Root() {
             </View>
           ) : (
             <View style={{ gap: 16 }}>
-              <Text accessibilityRole="header" style={s.h1}>
-                Profile
-              </Text>
+              <View style={s.between}>
+                <Text accessibilityRole="header" style={s.h1}>
+                  Profile
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Settings"
+                  disabled={busy}
+                  onPress={() => {
+                    setError("");
+                    setSettingsPage("main");
+                  }}
+                  style={s.iconButton}
+                >
+                  <Icon name="settings-outline" color={colors.yellow} />
+                </Pressable>
+              </View>
               <View
                 style={{ alignItems: "center", gap: 12, paddingVertical: 16 }}
               >
@@ -397,12 +459,6 @@ function Root() {
                   friends. There’s no pressure to keep up.
                 </Text>
               </View>
-              <Button
-                title="Sign out"
-                secondary
-                loading={busy}
-                onPress={signOut}
-              />
             </View>
           )}
         </Entrance>

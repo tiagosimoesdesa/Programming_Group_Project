@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Image,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -9,7 +10,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BeerGlass } from "./Brand";
-import { Competition, Detail, request } from "./api";
+import { Competition, DailyCelebration, Detail, request } from "./api";
 import { Button, Icon, colors, s } from "./ui";
 
 function friends(count: number) {
@@ -17,6 +18,42 @@ function friends(count: number) {
 }
 
 const modeLabels = { classic: "Classic", party: "Party", battle: "Battle" };
+
+function CelebrationCard({ card }: { card: DailyCelebration }) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Today's reason to celebrate. I was not going to drink today, but... ${card.title}. ${card.fact}. Read ${card.source_title}`}
+      accessibilityHint="Opens the source in your browser"
+      onPress={() => void Linking.openURL(card.source_url)}
+      style={({ pressed }) => [
+        styles.celebration,
+        pressed && { opacity: 0.82 },
+      ]}
+    >
+      <View style={styles.celebrationHeader}>
+        <View style={styles.celebrationLabel}>
+          <Icon name="globe-outline" color={colors.yellow} size={20} />
+          <Text style={[s.label, { color: colors.yellow, flexShrink: 1 }]}>
+            Today's Reason to Celebrate
+          </Text>
+        </View>
+        <Text style={[s.small, styles.celebrationDate]}>
+          {card.display_date}
+        </Text>
+      </View>
+      <Text style={styles.celebrationLead}>
+        I was not going to drink today, but...
+      </Text>
+      <Text style={s.h3}>{card.title}</Text>
+      <Text style={s.body}>{card.fact}</Text>
+      <View style={styles.readMore}>
+        <Text style={[s.label, { color: colors.yellow }]}>Read more</Text>
+        <Icon name="arrow-forward" color={colors.yellow} size={19} />
+      </View>
+    </Pressable>
+  );
+}
 
 function ActiveNight({
   event,
@@ -139,12 +176,27 @@ export default function TonightScreen({
   onJoin: () => void;
 }) {
   const [featured, ...more] = nights;
+  const [celebration, setCelebration] = useState<DailyCelebration | null>(null);
   const { height } = useWindowDimensions();
+  useEffect(() => {
+    let current = true;
+    void request<DailyCelebration>("/daily-celebration")
+      .then((card) => {
+        if (current) setCelebration(card);
+      })
+      .catch(() => {
+        // The verified daily fact is optional and never blocks Tonight.
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
   return (
     <View style={{ gap: 16 }}>
       <Text accessibilityRole="header" style={s.h1}>
         Tonight
       </Text>
+      {!featured && celebration && <CelebrationCard card={celebration} />}
       {featured ? (
         <>
           <ActiveNight
@@ -170,6 +222,7 @@ export default function TonightScreen({
               style={styles.action}
             />
           </View>
+          {celebration && <CelebrationCard card={celebration} />}
           {more.map((event) => (
             <NightListItem
               key={event.id}
@@ -229,6 +282,44 @@ const styles = StyleSheet.create({
   },
   actions: { flexDirection: "row", gap: 9 },
   action: { flex: 1 },
+  celebration: {
+    borderWidth: 2,
+    borderColor: colors.yellow,
+    borderRadius: 17,
+    backgroundColor: "#2A1A0FD9",
+    paddingHorizontal: 17,
+    paddingVertical: 15,
+    gap: 8,
+    shadowColor: colors.yellow,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  celebrationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  celebrationLabel: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  celebrationDate: { color: "#F5E5D6", fontWeight: "700" },
+  celebrationLead: {
+    color: colors.yellow,
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
+  },
+  readMore: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 2,
+  },
   empty: { alignItems: "center", gap: 14, paddingBottom: 20 },
   emptyCopy: { textAlign: "center", maxWidth: 275 },
   emptyActions: {

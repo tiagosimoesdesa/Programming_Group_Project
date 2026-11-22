@@ -10,6 +10,8 @@ These checks require the user's Android and iPhone. Automated tests cannot certi
 - [ ] On the deployed web app, register or log in, reload and close/reopen the page, and confirm the session restores; then log out and confirm it does not return.
 - [ ] Session restoration and sign-out work; temporary network failures do not erase valid sessions.
 - [ ] Profile-photo selection works; denied photo permission shows useful guidance.
+- [ ] The verified daily celebration card fits below Tonight on small iPhone, Android, and production web layouts without clipping or pushing primary actions below reach.
+- [ ] The card shows `I was not going to drink today, but...`, the Lisbon date, sourced fact, and a working Read more link; with the optional provider unavailable, a correct sourced calendar fallback still appears without an error.
 
 ## Shared competition
 

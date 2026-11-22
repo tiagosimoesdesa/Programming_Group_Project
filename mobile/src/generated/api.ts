@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/daily-celebration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daily Celebration */
+        get: operations["daily_celebration_daily_celebration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -699,6 +716,21 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** DailyCelebrationOut */
+        DailyCelebrationOut: {
+            /** Date */
+            date: string;
+            /** Display Date */
+            display_date: string;
+            /** Title */
+            title: string;
+            /** Fact */
+            fact: string;
+            /** Source Title */
+            source_title: string;
+            /** Source Url */
+            source_url: string;
+        };
         /** EventDetail */
         EventDetail: {
             competition: components["schemas"]["EventOut"];
@@ -987,6 +1019,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    daily_celebration_daily_celebration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyCelebrationOut"];
                 };
             };
         };

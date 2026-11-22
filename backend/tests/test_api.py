@@ -56,6 +56,33 @@ def test_registration_and_auth(client):
     assert client.post("/auth/login", json={"username": "ALEX", "password": "strong-password-123"}).status_code == 200
 
 
+def test_username_change_preserves_account_membership_and_session(client):
+    auth, tokens = account(client)
+    account(client, "sam")
+    original = client.get("/me", headers=auth).json()
+    night = event(client, auth)
+
+    assert client.put("/me/username", json={"username": "valid_name"}).status_code == 401
+    assert client.put("/me/username", headers=auth, json={"username": "a b"}).status_code == 422
+    conflict = client.put("/me/username", headers=auth, json={"username": "SAM"})
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "That username is already taken"
+    assert client.get("/me", headers=auth).json() == original
+
+    expected = {**original, "username": "new_name"}
+    renamed = client.put("/me/username", headers=auth, json={"username": "New_Name"})
+    assert renamed.status_code == 200 and renamed.json() == expected
+    assert client.put("/me/username", headers=auth, json={"username": "new_name"}).json() == expected
+    assert client.get("/me", headers=auth).json() == expected
+    assert client.get(f"/competitions/{night['id']}", headers=auth).json()["standings"][0]["username"] == "new_name"
+
+    refreshed = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert refreshed.status_code == 200
+    assert client.get("/me", headers={"Authorization": f"Bearer {refreshed.json()['access_token']}"}).json() == expected
+    assert client.post("/auth/login", json={"username": "alex", "password": "strong-password-123"}).status_code == 401
+    assert client.post("/auth/login", json={"username": "new_name", "password": "strong-password-123"}).status_code == 200
+
+
 def test_refresh_rotation_and_logout(client):
     _, tokens = account(client)
     refreshed = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})

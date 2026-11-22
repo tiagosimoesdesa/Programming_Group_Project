@@ -49,11 +49,17 @@ async function raw(path: string, options: RequestInit = {}) {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
+      const validationMessage =
+        response.status === 422 && Array.isArray(body.detail)
+          ? body.detail[0]?.msg
+          : undefined;
       throw new ApiError(
         response.status,
         typeof body.detail === "string"
           ? body.detail
-          : "Check your details and try again.",
+          : typeof validationMessage === "string"
+            ? validationMessage.replace(/^Value error, /, "")
+            : "Check your details and try again.",
       );
     }
     return response.status === 204 ? undefined : await response.json();

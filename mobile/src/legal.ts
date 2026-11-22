@@ -97,9 +97,9 @@ export const TERMS_SECTIONS: readonly LegalSection[] = [
     ],
   },
   {
-    title: "11. Service providers, links and availability",
+    title: "11. Service providers and availability",
     paragraphs: [
-      "The service depends on internet access and third-party infrastructure, including Render and Supabase. Daily celebration cards can link to external sources. Those services and websites have their own terms and privacy practices. Their availability, content and security are not controlled by this app.",
+      "The service depends on internet access and third-party infrastructure, including Render and Supabase. Those services have their own terms and privacy practices. Their availability and security are outside the app’s control.",
       "The service is currently an early student release and may be changed, suspended, unavailable or discontinued. Free hosting may sleep and take time to wake. We do not guarantee uninterrupted operation, permanent storage, compatibility with every device, or that every notification, timer, photograph or score will always be available without delay or error.",
     ],
   },
@@ -146,7 +146,7 @@ export const PRIVACY_SECTIONS: readonly LegalSection[] = [
   {
     title: "Controller and scope",
     paragraphs: [
-      "The legal person or natural person operating COUNT THE JOLS will be the data controller and must be named here before publication. This notice applies to the app, API and private photo storage. It does not cover independent websites linked from daily celebration cards.",
+      "The legal person or natural person operating COUNT THE JOLS will be the data controller and must be named here before publication. This notice applies to the app, API and private photo storage.",
       "Where applicable, personal-data processing is governed by Regulation (EU) 2016/679 (the General Data Protection Regulation or GDPR), Portuguese Law No. 58/2019 and other applicable Portuguese and European privacy law.",
       "Accepting the Terms is not blanket GDPR consent. Core processing is needed to provide the requested account and private-night service. Any optional purpose that legally requires consent must have a separate, specific choice and a way to withdraw it.",
     ],
@@ -176,7 +176,7 @@ export const PRIVACY_SECTIONS: readonly LegalSection[] = [
   {
     title: "Who can see night content",
     paragraphs: [
-      "People who enter an invitation-only night can see content according to their role. Invited spectators can see and react to photographs but cannot post or score. In Battle, a host can temporarily hide opposing teams’ scores and photographs; both teams can see them when the Battle ends. Finished nights and photographs remain available to members in history unless a member hides or removes that night from their own history.",
+      "People who enter an invitation-only night can see content according to their role. Invited spectators can see and react to photographs but cannot post or score. In Battle, a host can temporarily hide opposing teams’ scores and photographs; both teams can see them when the Battle ends. Finished nights and photographs remain available in members’ history. Hiding a night moves it to Hidden nights, where it can still be opened. Removing it prevents that member from reopening it.",
       "Personal history removal does not delete shared records for other members. Other participants may independently make screenshots or copies outside the operator’s control.",
     ],
   },

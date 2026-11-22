@@ -9,7 +9,8 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .scoring import beer_points
@@ -50,6 +51,14 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="BEERREAL", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_request: Request, error: RequestValidationError):
+    # Raw validation inputs can contain passwords, refresh tokens or photos.
+    details = [{field: item[field] for field in ("loc", "msg", "type")} for item in error.errors()]
+    return JSONResponse(status_code=422, content={"detail": details})
+
 
 PARTY_ROUND_SECONDS = 30 * 60
 PARTY_POINTS = 2
@@ -845,24 +854,37 @@ async def submit(event_id: str, request: Request, rear: UploadFile = File(), fro
     )
 
 
+def submission_with_key(db, event_id, user_id, key, *, round_id=None):
+    row = db.scalar(select(Submission).where(
+        Submission.competition_id == event_id,
+        Submission.user_id == user_id,
+        Submission.idempotency_key == key,
+    ))
+    kind = "challenge" if round_id is not None else "drink"
+    if row and (row.kind != kind or row.party_round_id != round_id):
+        raise HTTPException(409, "This upload key belongs to another check-in")
+    return row
+
+
 def submit_check_in(event_id, rear, front, beer_count, pint_count, idempotency_key, user, db):
     current_event, membership = event_membership(db, event_id, user.id)
     if membership.role != "player":
         raise HTTPException(403, "Spectators cannot submit photos")
+    user_id = user.id
+    key = str(idempotency_key)
+    existing = submission_with_key(db, event_id, user_id, key)
+    if existing:
+        return photo_out(db, existing)
+    if effective_ended_at(current_event):
+        raise HTTPException(409, "This competition has finished. Your photo was not counted.")
     if current_event.mode == "battle":
-        if not current_event.battle_started_at or effective_ended_at(current_event):
+        if not current_event.battle_started_at:
             raise HTTPException(409, "Battle photos are accepted only while the battle is active")
         if not membership.team:
             raise HTTPException(409, "Choose a team before posting a battle photo")
-    key = str(idempotency_key)
-    existing_query = select(Submission).where(Submission.competition_id == event_id, Submission.user_id == user.id, Submission.idempotency_key == key)
-    existing = db.scalar(existing_query)
-    if existing:
-        return photo_out(db, existing)
     if pint_count > beer_count:
         raise HTTPException(422, "Pint count cannot exceed total beer count")
     # Release the read connection before processing and uploading the photos.
-    user_id = user.id
     db.commit()
     rear_data, front_data = storage.validate_image(rear), storage.validate_image(front)
     photo_id = str(uuid.uuid4())
@@ -874,7 +896,7 @@ def submit_check_in(event_id, rear, front, beer_count, pint_count, idempotency_k
             uploaded.append(path)
             storage.put(path, data)
         event = lock_event(db, event_id)
-        existing = db.scalar(existing_query)
+        existing = submission_with_key(db, event_id, user_id, key)
         if existing:
             db.rollback()
             return photo_out(db, existing)
@@ -1047,22 +1069,22 @@ async def submit_party_attempt(event_id: str, round_id: str, request: Request, r
 
 
 def submit_challenge_photo(event_id, round_id, rear, front, idempotency_key, user, db):
-    event = member_event(db, event_id, user.id)
-    membership = db.get(Membership, (event_id, user.id))
+    event, membership = event_membership(db, event_id, user.id)
     if membership.role != "player":
         raise HTTPException(403, "Spectators cannot submit challenges")
-    if event.mode != "party" or event.ended_at:
+    if event.mode != "party":
         raise HTTPException(409, "Party challenges are not open")
+    user_id = user.id
     key = str(idempotency_key)
-    existing_submission = db.scalar(select(Submission).where(Submission.competition_id == event_id, Submission.user_id == user.id, Submission.idempotency_key == key))
-    if existing_submission:
-        return party_state(db, event, user.id)
+    if submission_with_key(db, event_id, user_id, key, round_id=round_id):
+        return party_state(db, event, user_id)
+    if event.ended_at:
+        raise HTTPException(409, "Party challenges are not open")
     party_round = active_party_round(db, event)
     if not party_round or party_round.id != round_id:
         raise HTTPException(409, "This challenge is no longer active")
     if db.scalar(select(ChallengeClaim).where(ChallengeClaim.round_id == round_id, ChallengeClaim.user_id == user.id)):
         raise HTTPException(409, "You already submitted this challenge")
-    user_id = user.id
     db.rollback()
     rear_data, front_data = storage.validate_image(rear), storage.validate_image(front)
     photo_id = str(uuid.uuid4())
@@ -1074,8 +1096,7 @@ def submit_challenge_photo(event_id, round_id, rear, front, idempotency_key, use
             uploaded.append(path)
             storage.put(path, data)
         event = lock_event(db, event_id)
-        existing_submission = db.scalar(select(Submission).where(Submission.competition_id == event_id, Submission.user_id == user_id, Submission.idempotency_key == key))
-        if existing_submission:
+        if submission_with_key(db, event_id, user_id, key, round_id=round_id):
             db.rollback()
             return party_state(db, event, user_id)
         party_round = active_party_round(db, event)

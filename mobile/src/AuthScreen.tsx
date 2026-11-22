@@ -36,9 +36,11 @@ export default function AuthScreen({
   const [error, setError] = useState("");
   const [focused, setFocused] = useState<"username" | "password" | null>(null);
   const passwordInput = useRef<TextInputInstance>(null);
-  const passwordLengthValid = password.length >= 7;
-  const passwordHasNumber = /\d/.test(password);
-  const passwordHasSpecial = /[^a-zA-Z0-9\s]/.test(password);
+  const passwordLength = Array.from(password).length;
+  const passwordLengthValid = passwordLength >= 7 && passwordLength <= 128;
+  const passwordHasNumber = /\p{Number}/u.test(password);
+  const passwordHasSpecial =
+    /[^\p{Letter}\p{Number}\p{White_Space}\u001c-\u001f]/u.test(password);
   const passwordValid =
     passwordLengthValid &&
     (!register || (passwordHasNumber && passwordHasSpecial));
@@ -157,7 +159,6 @@ export default function AuthScreen({
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
-                maxLength={128}
                 textContentType={register ? "newPassword" : "password"}
                 autoComplete={register ? "new-password" : "current-password"}
                 editable={!busy}

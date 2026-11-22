@@ -11,7 +11,7 @@ These checks require the user's Android and iPhone. Automated tests cannot certi
 - [ ] Session restoration and sign-out work; temporary network failures do not erase valid sessions.
 - [ ] Profile-photo selection works; denied photo permission shows useful guidance.
 - [ ] The verified daily celebration card fits below Tonight on small iPhone, Android, and production web layouts without clipping or pushing primary actions below reach.
-- [ ] The card shows `I was not going to drink today, but...`, the Lisbon date, sourced fact, and a working Read more link; with the optional provider unavailable, a correct sourced calendar fallback still appears without an error.
+- [ ] The card shows `I was not going to drink today, but...`, the Lisbon date, and the celebration title and fact without a source link. Tapping the card leaves Tonight open. With the optional provider unavailable, a fixed-date celebration still appears. Return to the app after Lisbon midnight and verify that the new date's card appears.
 
 ## Shared competition
 

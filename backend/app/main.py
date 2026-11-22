@@ -1,10 +1,11 @@
 import asyncio
+import logging
 import secrets
 import threading
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
@@ -13,26 +14,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .scoring import beer_points
 from sqlalchemy import Integer, case, cast, delete, func, or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 from . import storage
 from .db import Session, get_db
-from .daily_celebration import build_daily_celebration
+from .daily_celebration import LEGACY_CALENDAR_SOURCE, build_daily_celebration, find_openai_celebration
 from .models import Competition, DailyCelebration, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
 from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, DailyCelebrationOut, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition, UsernameInput
 from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
 
 UPLOAD_CONCURRENCY = 6
+CELEBRATION_BUFFER_DAYS = 7
+CELEBRATION_REFRESH_SECONDS = 6 * 60 * 60
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Limit general work and give slower password and photo jobs their own queues.
     to_thread.current_default_thread_limiter().total_tokens = 12
-    yield {
-        "auth_limiter": CapacityLimiter(settings.password_hash_concurrency),
-        "upload_limiter": CapacityLimiter(UPLOAD_CONCURRENCY),
-    }
+    celebration_task = (
+        asyncio.create_task(refresh_celebration_buffer()) if settings.openai_api_key else None
+    )
+    try:
+        yield {
+            "auth_limiter": CapacityLimiter(settings.password_hash_concurrency),
+            "upload_limiter": CapacityLimiter(UPLOAD_CONCURRENCY),
+        }
+    finally:
+        if celebration_task is not None:
+            celebration_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await celebration_task
 
 
 app = FastAPI(title="BEERREAL", version="0.1.0", lifespan=lifespan)
@@ -127,6 +140,56 @@ def profile(user):
 
 def current_celebration_date():
     return datetime.now(ZoneInfo(settings.daily_celebration_timezone)).date()
+
+
+def stored_celebration(db: DbSession, key: str) -> DailyCelebration | None:
+    row = db.get(DailyCelebration, key)
+    if row and not row.source_url.startswith(LEGACY_CALENDAR_SOURCE):
+        return row
+    return None
+
+
+def save_celebration(db: DbSession, key: str, content: dict) -> DailyCelebration:
+    existing = db.get(DailyCelebration, key)
+    if existing and not existing.source_url.startswith(LEGACY_CALENDAR_SOURCE):
+        return existing
+    row = db.merge(DailyCelebration(date=key, **content))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        row = stored_celebration(db, key)
+        if row is None:
+            raise
+    return row
+
+
+def prepare_celebration(day: date) -> None:
+    key = day.isoformat()
+    with Session() as db:
+        if stored_celebration(db, key):
+            return
+    content = find_openai_celebration(day)
+    if content is not None:
+        with Session() as db:
+            save_celebration(db, key, content)
+
+
+async def prepare_celebration_buffer(today: date) -> None:
+    limiter = CapacityLimiter(1)
+    for offset in range(1, CELEBRATION_BUFFER_DAYS + 1):
+        day = today + timedelta(days=offset)
+        try:
+            await to_thread.run_sync(prepare_celebration, day, abandon_on_cancel=True, limiter=limiter)
+        except SQLAlchemyError:
+            logger.exception("Could not save the daily celebration for %s", day)
+            break
+
+
+async def refresh_celebration_buffer() -> None:
+    while True:
+        await prepare_celebration_buffer(current_celebration_date())
+        await asyncio.sleep(CELEBRATION_REFRESH_SECONDS)
 
 
 def celebration_out(row):
@@ -249,24 +312,15 @@ def health(db: DbSession = Depends(get_db)):
 def daily_celebration(_user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     day = current_celebration_date()
     key = day.isoformat()
-    row = db.get(DailyCelebration, key)
+    row = stored_celebration(db, key)
     if row:
         return celebration_out(row)
     with _daily_celebration_lock:
-        row = db.get(DailyCelebration, key)
+        row = stored_celebration(db, key)
         if row:
             return celebration_out(row)
-        content = build_daily_celebration(day)
-        row = DailyCelebration(date=key, **content)
-        db.add(row)
-        try:
-            db.commit()
-        except IntegrityError:
-            db.rollback()
-            row = db.get(DailyCelebration, key)
-            if row is None:
-                raise
-        return celebration_out(row)
+        db.rollback()
+        return celebration_out(save_celebration(db, key, build_daily_celebration(day)))
 
 
 def register_account(body: Register, request: Request):

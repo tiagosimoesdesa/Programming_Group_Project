@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
+  AppState,
   Image,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -21,16 +21,7 @@ const modeLabels = { classic: "Classic", party: "Party", battle: "Battle" };
 
 function CelebrationCard({ card }: { card: DailyCelebration }) {
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`Today's reason to celebrate. I was not going to drink today, but... ${card.title}. ${card.fact}. Read ${card.source_title}`}
-      accessibilityHint="Opens the source in your browser"
-      onPress={() => void Linking.openURL(card.source_url)}
-      style={({ pressed }) => [
-        styles.celebration,
-        pressed && { opacity: 0.82 },
-      ]}
-    >
+    <View style={styles.celebration}>
       <View style={styles.celebrationHeader}>
         <View style={styles.celebrationLabel}>
           <Icon name="globe-outline" color={colors.yellow} size={20} />
@@ -47,11 +38,7 @@ function CelebrationCard({ card }: { card: DailyCelebration }) {
       </Text>
       <Text style={s.h3}>{card.title}</Text>
       <Text style={s.body}>{card.fact}</Text>
-      <View style={styles.readMore}>
-        <Text style={[s.label, { color: colors.yellow }]}>Read more</Text>
-        <Icon name="arrow-forward" color={colors.yellow} size={19} />
-      </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -180,15 +167,26 @@ export default function TonightScreen({
   const { height } = useWindowDimensions();
   useEffect(() => {
     let current = true;
-    void request<DailyCelebration>("/daily-celebration")
-      .then((card) => {
+    let loading = false;
+    const loadCelebration = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const card = await request<DailyCelebration>("/daily-celebration");
         if (current) setCelebration(card);
-      })
-      .catch(() => {
-        // The verified daily fact is optional and never blocks Tonight.
-      });
+      } catch {
+        // Tonight remains available if the daily fact request fails.
+      } finally {
+        loading = false;
+      }
+    };
+    void loadCelebration();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void loadCelebration();
+    });
     return () => {
       current = false;
+      subscription.remove();
     };
   }, []);
   return (
@@ -313,12 +311,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 21,
     fontWeight: "800",
-  },
-  readMore: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginTop: 2,
   },
   empty: { alignItems: "center", gap: 14, paddingBottom: 20 },
   emptyCopy: { textAlign: "center", maxWidth: 275 },

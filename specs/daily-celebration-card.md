@@ -8,11 +8,12 @@ The Tonight screen should offer one light, shareable fact tied to the current ca
 
 - Show a gold-outlined daily card in the Tonight screen layout from the supplied reference image.
 - Place it immediately below the Tonight heading when there is no active night and below the Start/Join actions when a night is active.
-- Include the exact lead-in `I was not going to drink today, but...`, followed by the verified celebration title and fact, the Lisbon date, and a clickable source.
+- Show the Lisbon date, the exact lead-in `I was not going to drink today, but...`, the celebration title, and the fact. Render the card as static content with no source displayed.
 - Have FastAPI select and persist at most one card per Lisbon calendar date for all users.
-- When `OPENAI_API_KEY` is configured, use the Responses API with web search and structured output to find a light festival, holiday, tradition, sport, culture, or science anniversary and retain only a source returned by the search.
+- When `OPENAI_API_KEY` is configured, use the Responses API with web search to look for a real festival, holiday, tradition, or positive anniversary for the exact date. Vary the preferred theme, require date evidence and keep the source returned by the search for backend records.
+- Prepare cards for the next seven Lisbon dates when the backend starts and check for missing cards every six hours. A failed attempt leaves that future date available for a later retry. Serve saved cards directly and try OpenAI on demand when today's card has yet to be prepared.
 - Keep the OpenAI key on the backend. Send only the calendar date and content requirements, never user or competition data.
-- Prefer a pre-verified dated celebration fallback when available. For every other valid date, return a sourced Gregorian-calendar fact calculated by the backend, so provider failure never leaves a date without a correct card.
+- If OpenAI is unavailable, use a bundled fixed-date observance for today's month and day, including 29 February. Replace any Gregorian calendar-arithmetic card left in storage by the previous version when its date is requested.
 
 ## Out of scope
 
@@ -24,8 +25,8 @@ The Tonight screen should offer one light, shareable fact tied to the current ca
 ## Done when
 
 - A migration creates persistent daily-card storage and Alembic reports no pending model operations.
-- Backend tests cover cached cards, one persisted card per date, source validation, fallback behavior, and unavailable providers.
+- Backend tests cover cached cards, one persisted card per date, the seven-day buffer and retries, date and source checks, and missing providers.
 - OpenAPI and generated TypeScript types are current, backend tests pass, and mobile TypeScript checking passes.
 - Automated coverage proves a valid sourced fallback exists for all 366 dates in a leap year and remains correct for common years.
-- The card matches the supplied empty-night and active-night placements, includes the required lead-in and fact, and opens its source without blocking Tonight when the optional provider is unavailable.
-- Small-phone, iPhone, Android, and production-web layout/source-link behavior remain recorded as physical/deployed acceptance work where they cannot be automated.
+- The card matches the supplied empty-night and active-night placements, shows the required lead-in and fact without a link, and checks for a new card when Tonight returns to the foreground.
+- Small-phone, iPhone, Android, and production-web layout remain recorded as physical/deployed acceptance work where they cannot be automated.

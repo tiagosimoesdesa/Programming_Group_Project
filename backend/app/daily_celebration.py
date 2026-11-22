@@ -1,6 +1,9 @@
 import json
-from calendar import isleap
+import re
+from calendar import month_name
 from datetime import date
+from pathlib import Path
+from random import choice
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -18,33 +21,44 @@ BLOCKED_SOURCE_HOSTS = {
     "x.com",
 }
 DRINKING_WORDS = {"alcohol", "beer", "cocktail", "drink", "shot", "wine"}
-CURATED_FALLBACKS = {
-    (11, 22): {
-        "title": "Independence Day in Lebanon",
-        "fact": "Lebanon marks its Independence Day on 22 November.",
-        "source_title": "Banque du Liban official banking holidays",
-        "source_url": "https://bdl.gov.lb/bankingholidays.php",
-    },
-}
+LEGACY_CALENDAR_SOURCE = "https://www.timeanddate.com/date/weekday.html?"
+CELEBRATION_THEMES = (
+    "local festivals and traditions",
+    "food, arts and crafts",
+    "music, film and literature",
+    "sport and games",
+    "science and nature",
+)
+MONTHS = {name.casefold(): number for number, name in enumerate(month_name) if number}
+MONTH_PATTERN = "|".join(MONTHS)
+NAMED_DATE = re.compile(
+    rf"\b(?:({MONTH_PATTERN})\s+(\d{{1,2}})(?:st|nd|rd|th)?"
+    rf"|(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({MONTH_PATTERN}))\b",
+    re.IGNORECASE,
+)
+ISO_DATE = re.compile(r"\b\d{4}-(\d{2})-(\d{2})\b")
+URL_IN_COPY = re.compile(r"https?://|www\.", re.IGNORECASE)
+VERIFIED_FALLBACKS = json.loads(
+    Path(__file__).with_name("celebration_calendar.json").read_text(encoding="utf-8")
+)
 
 
-def _calendar_fallback(day: date) -> dict:
-    """Return a sourced fact that is correct for every Gregorian date."""
-    day_number = day.timetuple().tm_yday
-    days_in_year = 366 if isleap(day.year) else 365
-    days_left = days_in_year - day_number
+def verified_fallback(day: date) -> dict:
+    title, source_title, source_url = VERIFIED_FALLBACKS[day.strftime("%m-%d")]
     return {
-        "title": day.strftime("%A, %d %B").replace(" 0", " "),
-        "fact": (
-            f"{day.strftime('%d %B').lstrip('0')} is day {day_number} of {day.year}, "
-            f"with {days_left} days remaining after today."
-        ),
-        "source_title": "Timeanddate Weekday Calculator",
-        "source_url": (
-            "https://www.timeanddate.com/date/weekday.html"
-            f"?day={day.day}&month={day.month}&year={day.year}"
-        ),
+        "title": title,
+        "fact": f"{title} is observed on {day.day} {month_name[day.month]}.",
+        "source_title": source_title,
+        "source_url": source_url,
     }
+
+
+def _dates_in(text: str) -> set[tuple[int, int]]:
+    named = {
+        (MONTHS[(first_month or last_month).casefold()], int(last_day or first_day))
+        for first_month, last_day, first_day, last_month in NAMED_DATE.findall(text)
+    }
+    return named | {(int(month), int(day)) for month, day in ISO_DATE.findall(text)}
 
 
 def _normalize_url(value: str) -> str:
@@ -75,7 +89,7 @@ def _response_sources(payload: dict) -> set[str]:
     for item in payload.get("output", []):
         if item.get("type") != "web_search_call":
             continue
-        for source in item.get("action", {}).get("sources", []):
+        for source in (item.get("action") or {}).get("sources") or []:
             if isinstance(source, dict) and isinstance(source.get("url"), str):
                 try:
                     urls.add(_normalize_url(source["url"]))
@@ -98,25 +112,24 @@ def _request_openai(payload: dict) -> dict:
 def _openai_fact(day: date) -> dict | None:
     if not settings.openai_api_key:
         return None
-    month_day = day.strftime("%m-%d")
     schema = {
         "type": "object",
         "properties": {
-            "month_day": {"type": "string"},
+            "date_evidence": {"type": "string"},
             "title": {"type": "string"},
             "fact": {"type": "string"},
             "source_title": {"type": "string"},
             "source_url": {"type": "string"},
         },
-        "required": ["month_day", "title", "fact", "source_title", "source_url"],
+        "required": ["date_evidence", "title", "fact", "source_title", "source_url"],
         "additionalProperties": False,
     }
     prompt = f"""
-Find one real, light reason to celebrate that occurs every year or occurred historically on {day.strftime('%B %d')}.
-Prefer an official festival, holiday, cultural tradition, sporting achievement, entertainment milestone, or positive science anniversary.
-Use web search and cite an official organizer, government, institution, league, club, museum, archive, or other primary source that explicitly confirms the date.
+Find one real celebration anywhere in the world for {day.isoformat()} ({day.strftime('%d %B')}).
+Prefer an event taking place on this exact date, a fixed annual observance, or a positive anniversary of an event on this month and day. Prefer the theme {choice(CELEBRATION_THEMES)} when a suitable example exists.
+Use web search to find a primary source, such as the organizer, government, institution, league, museum or archive. Return a brief quotation in date_evidence that names the event and gives its date in English using the full month name, or gives an ISO date. Use the exact HTTPS page for source_url.
 Avoid deaths, disasters, war, crime, politics, religious persuasion, and instructions to consume alcohol.
-Write a short title and one factual sentence under 240 characters. Return month_day as {month_day} and source_url as the exact HTTPS page used.
+Write a short title and one factual sentence under 240 characters. Keep URLs and source credits out of the title and fact. Use an empty date_evidence when no primary source supports the celebration date.
 """.strip()
     payload = _request_openai(
         {
@@ -124,6 +137,7 @@ Write a short title and one factual sentence under 240 characters. Return month_
             "store": False,
             "reasoning": {"effort": "low"},
             "tools": [{"type": "web_search", "search_context_size": "low"}],
+            "tool_choice": "required",
             "include": ["web_search_call.action.sources"],
             "input": prompt,
             "text": {
@@ -137,14 +151,19 @@ Write a short title and one factual sentence under 240 characters. Return month_
         }
     )
     data = json.loads(_response_text(payload))
-    if data.get("month_day") != month_day:
-        raise ValueError("The response used the wrong calendar date")
+    expected_dates = {(day.month, day.day)}
+    if _dates_in(data.get("date_evidence", "")) != expected_dates:
+        raise ValueError("The search evidence must give the requested calendar date")
     source_url = _normalize_url(data.get("source_url", ""))
     if source_url not in _response_sources(payload):
-        raise ValueError("The displayed source was not returned by web search")
+        raise ValueError("The source was not returned by web search")
     title = " ".join(str(data.get("title", "")).split())
     fact = " ".join(str(data.get("fact", "")).split())
     source_title = " ".join(str(data.get("source_title", "")).split())
+    if _dates_in(f"{title} {fact}") - expected_dates:
+        raise ValueError("The card mentions a conflicting calendar date")
+    if URL_IN_COPY.search(f"{title} {fact}"):
+        raise ValueError("The card text must not contain URLs")
     if not (3 <= len(title) <= 140 and 10 <= len(fact) <= 360 and 3 <= len(source_title) <= 180):
         raise ValueError("The generated card has invalid text lengths")
     words = {word.strip(".,:;!?()[]{}\"'").casefold() for word in f"{title} {fact}".split()}
@@ -158,11 +177,12 @@ Write a short title and one factual sentence under 240 characters. Return month_
     }
 
 
-def build_daily_celebration(day: date) -> dict:
+def find_openai_celebration(day: date) -> dict | None:
     try:
-        generated = _openai_fact(day)
-        if generated:
-            return generated
+        return _openai_fact(day)
     except (httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        pass
-    return CURATED_FALLBACKS.get((day.month, day.day)) or _calendar_fallback(day)
+        return None
+
+
+def build_daily_celebration(day: date) -> dict:
+    return find_openai_celebration(day) or verified_fallback(day)

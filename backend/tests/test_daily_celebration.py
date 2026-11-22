@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -22,14 +23,15 @@ def auth(client, username="daily_fact_user"):
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
-def openai_payload(source_url, *, returned_url=None):
+def openai_payload(source_url, *, returned_url=None, **overrides):
     card = {
-        "month_day": "11-22",
+        "date_evidence": "The team won the championship on November 22, 1994.",
         "title": "A verified sporting anniversary",
         "fact": "A national team recorded a milestone victory on 22 November.",
         "source_title": "Official sporting archive",
         "source_url": source_url,
     }
+    card.update(overrides)
     return {
         "output": [
             {
@@ -44,7 +46,7 @@ def openai_payload(source_url, *, returned_url=None):
     }
 
 
-def test_openai_card_requires_the_displayed_source_to_come_from_search(monkeypatch):
+def test_openai_card_requires_the_source_to_come_from_search(monkeypatch):
     day = date(2026, 11, 22)
     official = "https://example.org/official-anniversary"
     monkeypatch.setattr(settings, "openai_api_key", "test-key")
@@ -56,9 +58,27 @@ def test_openai_card_requires_the_displayed_source_to_come_from_search(monkeypat
         "_request_openai",
         lambda _payload: openai_payload(official, returned_url="https://example.org/different-page"),
     )
-    fallback = daily.build_daily_celebration(date(2026, 1, 2))
-    assert fallback["title"] == "Friday, 2 January"
-    assert fallback["source_url"].startswith("https://www.timeanddate.com/date/weekday.html")
+    assert daily.build_daily_celebration(day) == daily.verified_fallback(day)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"date_evidence": "The team lifted the cup on 1 January."},
+        {"date_evidence": "The team lifted the cup that year."},
+        {"fact": "The team lifted the cup on 1 January."},
+        {"fact": "Find the results at https://example.org/official-anniversary."},
+    ],
+)
+def test_openai_rejects_missing_or_conflicting_date_evidence_and_urls(monkeypatch, overrides):
+    day = date(2026, 11, 22)
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+    monkeypatch.setattr(
+        daily,
+        "_request_openai",
+        lambda _payload: openai_payload("https://example.org/official-anniversary", **overrides),
+    )
+    assert daily.build_daily_celebration(day) == daily.verified_fallback(day)
 
 
 @pytest.mark.parametrize(
@@ -83,14 +103,12 @@ def test_openai_failures_and_unsafe_copy_use_the_guaranteed_fallback(monkeypatch
         "_request_openai",
         lambda _payload: (_ for _ in ()).throw(httpx.TimeoutException("provider timeout")),
     )
-    assert daily.build_daily_celebration(date(2026, 1, 2))["fact"].startswith(
-        "2 January is day 2"
-    )
+    assert daily.build_daily_celebration(date(2026, 1, 2))["title"] == "National Science Fiction Day"
 
-    unsafe = openai_payload("https://example.org/official-anniversary")
-    unsafe_card = json.loads(unsafe["output"][1]["content"][0]["text"])
-    unsafe_card["fact"] = "This anniversary tells everyone to drink beer today."
-    unsafe["output"][1]["content"][0]["text"] = json.dumps(unsafe_card)
+    unsafe = openai_payload(
+        "https://example.org/official-anniversary",
+        fact="This anniversary tells everyone to drink beer today.",
+    )
     monkeypatch.setattr(daily, "_request_openai", lambda _payload: unsafe)
     assert daily.build_daily_celebration(date(2026, 11, 22))["title"] == (
         "Independence Day in Lebanon"
@@ -107,41 +125,31 @@ def test_preverified_fallback_is_used_without_an_openai_key(monkeypatch):
 def test_every_calendar_date_has_a_correct_sourced_fallback(monkeypatch):
     monkeypatch.setattr(settings, "openai_api_key", "")
     first = date(2024, 1, 1)
+    titles = set()
     for offset in range(366):
         day = first + timedelta(days=offset)
         card = daily.build_daily_celebration(day)
-        assert card
-        assert card["source_url"].startswith("https://")
-        if (day.month, day.day) in daily.CURATED_FALLBACKS:
-            continue
-        day_number = offset + 1
-        assert card["title"] == day.strftime("%A, %d %B").replace(" 0", " ")
-        assert card["fact"] == (
-            f"{day.strftime('%d %B').lstrip('0')} is day {day_number} of 2024, "
-            f"with {366 - day_number} days remaining after today."
-        )
-        assert card["source_url"] == (
-            "https://www.timeanddate.com/date/weekday.html"
-            f"?day={day.day}&month={day.month}&year=2024"
-        )
+        assert daily._normalize_url(card["source_url"])
+        assert not card["source_url"].startswith(daily.LEGACY_CALENDAR_SOURCE)
+        assert 3 <= len(card["title"]) <= 140 and 10 <= len(card["fact"]) <= 360
+        assert daily._dates_in(card["fact"]) == {(day.month, day.day)}
+        titles.add(card["title"])
+    assert len(titles) == 366
+    assert daily.build_daily_celebration(date(2024, 2, 29))["title"] == "National Surf and Turf Day"
 
 
-def test_common_year_calendar_fallback_ends_on_day_365(monkeypatch):
+def test_common_year_ends_with_a_celebration(monkeypatch):
     monkeypatch.setattr(settings, "openai_api_key", "")
     card = daily.build_daily_celebration(date(2025, 12, 31))
-    assert card["fact"] == "31 December is day 365 of 2025, with 0 days remaining after today."
+    assert card["fact"] == "Hogmanay is observed on 31 December."
 
 
 def test_calendar_fallback_is_correct_across_a_full_gregorian_cycle():
     day = date(2000, 1, 1)
     end = date(2400, 1, 1)
     while day < end:
-        card = daily._calendar_fallback(day)
-        day_number = day.timetuple().tm_yday
-        days_in_year = 366 if day.replace(month=12, day=31).timetuple().tm_yday == 366 else 365
-        assert f"day {day_number} of {day.year}" in card["fact"]
-        assert f"with {days_in_year - day_number} days remaining" in card["fact"]
-        assert f"day={day.day}&month={day.month}&year={day.year}" in card["source_url"]
+        card = daily.verified_fallback(day)
+        assert daily._dates_in(card["fact"]) == {(day.month, day.day)}
         day += timedelta(days=1)
 
 
@@ -182,7 +190,7 @@ def test_concurrent_first_reads_generate_and_store_only_one_card(client, monkeyp
         with calls_lock:
             calls += 1
         time.sleep(0.05)
-        return daily._calendar_fallback(day)
+        return daily.verified_fallback(day)
 
     monkeypatch.setattr(main, "build_daily_celebration", build)
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -200,15 +208,72 @@ def test_concurrent_first_reads_generate_and_store_only_one_card(client, monkeyp
 def test_provider_unavailable_still_returns_a_daily_card(client, monkeypatch):
     headers = auth(client)
     monkeypatch.setattr(main, "current_celebration_date", lambda: date(2026, 1, 2))
-    monkeypatch.setattr(
-        main,
-        "build_daily_celebration",
-        lambda day: daily._calendar_fallback(day),
-    )
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+
+    def timeout(_payload):
+        raise httpx.TimeoutException("provider timeout")
+
+    monkeypatch.setattr(daily, "_request_openai", timeout)
     response = client.get("/daily-celebration", headers=headers)
     assert response.status_code == 200
     assert response.json()["date"] == "2026-01-02"
-    assert response.json()["title"] == "Friday, 2 January"
+    assert response.json()["title"] == "National Science Fiction Day"
+
+
+def test_prepare_buffer_retries_missing_dates_and_serves_prepared_card(client, monkeypatch):
+    today = date(2026, 12, 29)
+    upcoming = [today + timedelta(days=offset) for offset in range(1, 8)]
+    missing = upcoming[2]
+    calls = []
+
+    def find(day):
+        calls.append(day)
+        if day == missing and calls.count(day) == 1:
+            return None
+        return {**daily.verified_fallback(day), "title": "Prepared celebration"}
+
+    monkeypatch.setattr(main, "find_openai_celebration", find)
+    asyncio.run(main.prepare_celebration_buffer(today))
+    with Session() as db:
+        assert db.get(DailyCelebration, today.isoformat()) is None
+        assert db.get(DailyCelebration, missing.isoformat()) is None
+        assert db.query(DailyCelebration).count() == 6
+
+    asyncio.run(main.prepare_celebration_buffer(today))
+    assert calls == [*upcoming, missing]
+    with Session() as db:
+        assert db.query(DailyCelebration).count() == 7
+
+    def unexpected_generation(_day):
+        pytest.fail("A prepared card must be served without a provider call")
+
+    monkeypatch.setattr(main, "current_celebration_date", lambda: missing)
+    monkeypatch.setattr(main, "build_daily_celebration", unexpected_generation)
+    response = client.get("/daily-celebration", headers=auth(client))
+    assert response.status_code == 200
+    assert response.json()["title"] == "Prepared celebration"
+
+
+def test_legacy_calendar_arithmetic_is_replaced_in_place(client, monkeypatch):
+    day = date(2026, 1, 2)
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.setattr(main, "current_celebration_date", lambda: day)
+    with Session() as db:
+        db.add(DailyCelebration(
+            date=day.isoformat(),
+            title="Friday, 2 January",
+            fact="2 January is day 2 of 2026, with 363 days remaining after today.",
+            source_title="Timeanddate Weekday Calculator",
+            source_url=f"{daily.LEGACY_CALENDAR_SOURCE}day=2&month=1&year=2026",
+        ))
+        db.commit()
+
+    response = client.get("/daily-celebration", headers=auth(client))
+    assert response.status_code == 200
+    assert response.json()["title"] == "National Science Fiction Day"
+    with Session() as db:
+        assert db.query(DailyCelebration).count() == 1
+        assert db.get(DailyCelebration, day.isoformat()).title == "National Science Fiction Day"
 
 
 def test_daily_card_requires_authentication(client):

@@ -261,6 +261,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/competitions/{event_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update History */
+        put: operations["update_history_competitions__event_id__history_put"];
+        post?: never;
+        /** Remove History */
+        delete: operations["remove_history_competitions__event_id__history_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/competitions/join": {
         parameters: {
             query?: never;
@@ -777,11 +795,21 @@ export interface components {
             party_started_at: number | null;
             /** Battle Started At */
             battle_started_at?: number | null;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HistoryVisibility */
+        HistoryVisibility: {
+            /** Hidden */
+            hidden: boolean;
         };
         /** JoinCompetition */
         JoinCompetition: {
@@ -1480,6 +1508,70 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_history_competitions__event_id__history_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryVisibility"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_history_competitions__event_id__history_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

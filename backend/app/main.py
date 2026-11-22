@@ -20,7 +20,7 @@ from . import storage
 from .db import Session, get_db
 from .daily_celebration import LEGACY_CALENDAR_SOURCE, build_daily_celebration, find_openai_celebration
 from .models import Competition, DailyCelebration, LoginAttempt, Membership, RefreshSession, Submission, User, Reaction, ChallengeClaim, ChallengeVote, PartyRound
-from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, DailyCelebrationOut, EventDetail, EventOut, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition, UsernameInput
+from .schemas import AccessToken, BattleOut, BattleTeamChoice, CreateCompetition, Credentials, DailyCelebrationOut, EventDetail, EventOut, HistoryVisibility, JoinCompetition, PhotoOut, Profile, RefreshIn, Register, Tokens, ReactionIn, ClaimIn, VoteIn, SocialOut, PartyOut, UpdateCompetition, UsernameInput
 from .security import REFRESH_SECONDS, current_user, decode, digest, dummy_hash, hash_password, issue_tokens, password_matches, rotate
 
 
@@ -49,7 +49,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="BEERREAL", version="0.1.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
 PARTY_ROUND_SECONDS = 30 * 60
 PARTY_POINTS = 2
@@ -223,17 +223,17 @@ def event_out(db, event, viewer_id=None, *, now=None, participants=None):
     role = membership.role if membership else "player"
     if participants is None:
         participants = db.scalar(select(func.count()).select_from(Membership).where(Membership.competition_id == event.id, Membership.role == "player"))
-    return serialize_event(event, role, participants, now)
+    return serialize_event(event, role, participants, now, hidden=bool(membership and membership.history_hidden_at))
 
 
-def serialize_event(event, role, participants, now=None):
-    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": effective_ended_at(event, now), "revision": event.revision, "participants": participants, "mode": event.mode, "party_started_at": event.party_started_at, "battle_started_at": event.battle_started_at}
+def serialize_event(event, role, participants, now=None, *, hidden=False):
+    return {"id": event.id, "name": event.name, "host_id": event.host_id, "code": event.code if role == "player" else "", "my_role": role, "created_at": event.created_at, "ended_at": effective_ended_at(event, now), "revision": event.revision, "participants": participants, "mode": event.mode, "party_started_at": event.party_started_at, "battle_started_at": event.battle_started_at, "hidden": hidden}
 
 
 def event_membership(db, event_id, user_id):
     row = db.execute(
         select(Competition, Membership).join(Membership)
-        .where(Competition.id == event_id, Membership.user_id == user_id)
+        .where(Competition.id == event_id, Membership.user_id == user_id, Membership.history_removed_at.is_(None))
     ).first()
     if row is None:
         raise HTTPException(404, "Competition not found")
@@ -464,15 +464,15 @@ def events(user: User = Depends(current_user), db: DbSession = Depends(get_db)):
         .correlate(Competition).scalar_subquery()
     )
     rows = db.execute(
-        select(Competition, Membership.role, participants).join(Membership)
-        .where(Membership.user_id == user.id)
+        select(Competition, Membership.role, Membership.history_hidden_at, participants).join(Membership)
+        .where(Membership.user_id == user.id, Membership.history_removed_at.is_(None))
         .order_by(Competition.created_at.desc(), Competition.id)
     ).all()
     # FastAPI validates the response after the sync handler returns. Release
     # the connection here so queued validation cannot tie up the whole pool.
     db.commit()
     now = int(time.time())
-    return [serialize_event(event, role, count, now) for event, role, count in rows]
+    return [serialize_event(event, role, count, now, hidden=bool(hidden_at)) for event, role, hidden_at, count in rows]
 
 
 @app.post("/competitions", response_model=EventOut, status_code=201)
@@ -520,13 +520,38 @@ def update_event(event_id: str, body: UpdateCompetition, user: User = Depends(cu
     return event_out(db, event, user.id)
 
 
+@app.put("/competitions/{event_id}/history", response_model=EventOut)
+def update_history(event_id: str, body: HistoryVisibility, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event, membership = event_membership(db, event_id, user.id)
+    if not effective_ended_at(event):
+        raise HTTPException(409, "Only finished nights can be hidden")
+    membership.history_hidden_at = int(time.time()) if body.hidden else None
+    db.commit()
+    return event_out(db, event, user.id)
+
+
+@app.delete("/competitions/{event_id}/history", status_code=204)
+def remove_history(event_id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    event, membership = event_membership(db, event_id, user.id)
+    if not effective_ended_at(event):
+        raise HTTPException(409, "Only finished nights can be removed from history")
+    membership.history_hidden_at = None
+    membership.history_removed_at = int(time.time())
+    db.commit()
+    return Response(status_code=204)
+
+
 @app.post("/competitions/join", response_model=EventOut)
 def join(body: JoinCompetition, user: User = Depends(current_user), db: DbSession = Depends(get_db)):
     event = db.scalar(select(Competition).where((Competition.code == body.code.upper()) | (Competition.spectator_code == body.code.upper())))
     if not event:
         raise HTTPException(404, "Invitation code not found")
     event = lock_event(db, event.id)
-    if db.get(Membership, (event.id, user.id)):
+    membership = db.get(Membership, (event.id, user.id))
+    if membership and membership.history_removed_at:
+        db.rollback()
+        raise HTTPException(409, "This night was removed from your history")
+    if membership:
         db.rollback()
         return event_out(db, event, user.id)
     if effective_ended_at(event):

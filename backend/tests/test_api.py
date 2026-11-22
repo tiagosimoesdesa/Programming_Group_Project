@@ -12,7 +12,7 @@ from sqlalchemy import event as sqlalchemy_event, select
 from app import storage
 from app.db import Session, engine
 from app.main import UPLOAD_CONCURRENCY, app
-from app.models import Competition, PartyRound, Submission, User
+from app.models import Competition, Membership, PartyRound, Submission, User
 from app.security import encode
 
 WEB_ORIGIN = "http://localhost:8082"
@@ -177,6 +177,47 @@ def test_host_can_change_night_name(client):
     assert client.put(path, headers=host, json={"name": "   "}).status_code == 422
     assert client.put(path, headers=host, json={"name": "x" * 61}).status_code == 422
     assert client.get(path, headers=host).json()["competition"]["name"] == "Saturday celebration"
+
+
+def test_personal_history_controls_preserve_the_shared_night(client):
+    with Session() as db:
+        users = [User(username=name, password_hash="unused") for name in ("history_host", "history_guest", "history_outsider")]
+        db.add_all(users)
+        db.commit()
+        host, guest, outsider = [
+            {"Authorization": f"Bearer {encode(user.id, 'access', 900)}"}
+            for user in users
+        ]
+        guest_id = users[1].id
+    night = event(client, host)
+    path = f"/competitions/{night['id']}"
+    assert client.post("/competitions/join", headers=guest, json={"code": night["code"]}).status_code == 200
+    guest_photo = submit(client, guest, night["id"]).json()
+
+    assert client.put(path + "/history", headers=guest, json={"hidden": True}).status_code == 409
+    assert client.delete(path + "/history", headers=guest).status_code == 409
+    assert client.put(path + "/history", headers=outsider, json={"hidden": True}).status_code == 404
+    assert client.post(path + "/end", headers=host).status_code == 200
+
+    hidden = client.put(path + "/history", headers=guest, json={"hidden": True})
+    assert hidden.status_code == 200 and hidden.json()["hidden"] is True
+    guest_list = client.get("/competitions", headers=guest).json()
+    assert next(item for item in guest_list if item["id"] == night["id"])["hidden"] is True
+    assert next(item for item in client.get("/competitions", headers=host).json() if item["id"] == night["id"])["hidden"] is False
+
+    restored = client.put(path + "/history", headers=guest, json={"hidden": False})
+    assert restored.status_code == 200 and restored.json()["hidden"] is False
+    assert client.delete(path + "/history", headers=guest).status_code == 204
+    assert all(item["id"] != night["id"] for item in client.get("/competitions", headers=guest).json())
+    assert client.get(path, headers=guest).status_code == 404
+    assert client.post("/competitions/join", headers=guest, json={"code": night["code"]}).status_code == 409
+
+    shared = client.get(path, headers=host).json()
+    assert "history_guest" in {row["username"] for row in shared["standings"]}
+    assert guest_photo["id"] in {photo["id"] for photo in shared["feed"]}
+    with Session() as db:
+        membership = db.get(Membership, (night["id"], guest_id))
+        assert membership is not None and membership.history_removed_at is not None
 
 
 def test_full_event_flow_and_privacy(client):

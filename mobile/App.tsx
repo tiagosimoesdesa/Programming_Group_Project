@@ -109,6 +109,7 @@ function Root() {
   const [sheetError, setSheetError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showHiddenHistory, setShowHiddenHistory] = useState(false);
   const [pending, setPending] = useState<Record<string, Capture | null>>({});
   const [offerCameraSetup, setOfferCameraSetup] = useState(false);
   const profileRevision = useRef(0);
@@ -178,6 +179,68 @@ function Root() {
     } finally {
       setRefreshing(false);
     }
+  }
+  async function setHistoryHidden(event: Competition, hidden: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await request<Competition>(
+        `/competitions/${event.id}/history`,
+        { method: "PUT", body: JSON.stringify({ hidden }) },
+      );
+      setEvents((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeFromHistory(event: Competition) {
+    setBusy(true);
+    setError("");
+    try {
+      await request(`/competitions/${event.id}/history`, {
+        method: "DELETE",
+      });
+      setEvents((current) => current.filter((item) => item.id !== event.id));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function historyOptions(event: Competition) {
+    if (busy) return;
+    showAlert(
+      event.name,
+      "Choose how this night appears in your personal history.",
+      [
+        {
+          text: event.hidden ? "Restore" : "Hide",
+          onPress: () => void setHistoryHidden(event, !event.hidden),
+        },
+        {
+          text: "Remove from my history",
+          style: "destructive",
+          onPress: () =>
+            showAlert(
+              "Remove this memory?",
+              "This removes the night permanently from your account. It will remain unchanged for everyone else.",
+              [
+                { text: "Keep it", style: "cancel" },
+                {
+                  text: "Remove",
+                  style: "destructive",
+                  onPress: () => void removeFromHistory(event),
+                },
+              ],
+            ),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
   }
   async function saveEvent() {
     setBusy(true);
@@ -318,7 +381,8 @@ function Root() {
     );
   if (!me) return <AuthScreen onLogin={() => load(true)} />;
   const active = events.filter((e) => !e.ended_at);
-  const history = events.filter((e) => e.ended_at);
+  const history = events.filter((e) => e.ended_at && !e.hidden);
+  const hiddenHistory = events.filter((e) => e.ended_at && e.hidden);
   const content = selected ? (
     <CompetitionScreen
       key={selected}
@@ -385,6 +449,7 @@ function Root() {
                     key={event.id}
                     event={event}
                     onOpen={() => setSelected(event.id)}
+                    onOptions={() => historyOptions(event)}
                   />
                 ))
               ) : (
@@ -393,6 +458,37 @@ function Root() {
                   body="Once your host finishes a competition, you’ll find it here."
                   icon="albums-outline"
                 />
+              )}
+              {hiddenHistory.length > 0 && (
+                <View style={{ gap: 12, marginTop: 8 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showHiddenHistory }}
+                    onPress={() => setShowHiddenHistory((current) => !current)}
+                    style={[s.card, s.between, { padding: 16 }]}
+                  >
+                    <View style={s.row}>
+                      <Icon name="eye-off-outline" color={colors.yellow} />
+                      <Text style={s.h3}>Hidden nights</Text>
+                    </View>
+                    <View style={s.row}>
+                      <Text style={s.small}>{hiddenHistory.length}</Text>
+                      <Icon
+                        name={showHiddenHistory ? "chevron-up" : "chevron-down"}
+                        color={colors.yellow}
+                      />
+                    </View>
+                  </Pressable>
+                  {showHiddenHistory &&
+                    hiddenHistory.map((event) => (
+                      <NightListItem
+                        key={event.id}
+                        event={event}
+                        onOpen={() => setSelected(event.id)}
+                        onOptions={() => historyOptions(event)}
+                      />
+                    ))}
+                </View>
               )}
             </View>
           ) : (

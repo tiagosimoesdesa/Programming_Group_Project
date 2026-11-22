@@ -91,6 +91,10 @@ class JoinCompetition(BaseModel):
     code: str = Field(pattern=r"^(?:[A-Za-z0-9]{8}|[A-Za-z0-9]{10})$")
 
 
+class HistoryVisibility(BaseModel):
+    hidden: bool
+
+
 class EventOut(BaseModel):
     id: str
     name: str
@@ -104,6 +108,7 @@ class EventOut(BaseModel):
     mode: Literal["classic", "party", "battle"]
     party_started_at: int | None
     battle_started_at: int | None = None
+    hidden: bool = False
 
 
 class Standing(Profile):

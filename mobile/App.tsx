@@ -39,6 +39,7 @@ import NightBackdrop from "./src/NightBackdrop";
 import TonightScreen, { NightListItem } from "./src/TonightScreen";
 import CompetitionScreen from "./src/CompetitionScreen";
 import SettingsScreen from "./src/SettingsScreen";
+import TermsGate from "./src/TermsAndConditions";
 import { Capture } from "./src/CameraScreen";
 import { CameraAccessProvider } from "./src/CameraAccess";
 import {
@@ -77,7 +78,9 @@ export default function App() {
         mode={Platform.OS === "web" ? "margin" : "padding"}
         style={s.root}
       >
-        <Root />
+        <TermsGate>
+          <Root />
+        </TermsGate>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -91,7 +94,9 @@ function Root() {
   const [bootError, setBootError] = useState("");
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"home" | "history" | "profile">("home");
-  const [settingsPage, setSettingsPage] = useState<"main" | "privacy" | null>(null);
+  const [settingsPage, setSettingsPage] = useState<
+    "main" | "privacy" | "terms" | null
+  >(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<
     "create" | "join" | "battle-menu" | "battle-create" | "battle-join" | null
@@ -159,7 +164,7 @@ function Root() {
     const back = BackHandler.addEventListener("hardwareBackPress", () => {
       if (selected) return false;
       if (settingsPage) {
-        if (!busy) setSettingsPage(settingsPage === "privacy" ? "main" : null);
+        if (!busy) setSettingsPage(settingsPage === "main" ? null : "main");
         return true;
       }
       if (tab !== "home") {
@@ -280,16 +285,18 @@ function Root() {
   }
   function updateProfile(profile: Profile) {
     profileRevision.current += 1;
-    setMe((current) => current?.id === profile.id ? profile : current);
+    setMe((current) => (current?.id === profile.id ? profile : current));
   }
   async function changeUsername(username: string) {
     setBusy(true);
     setError("");
     try {
-      updateProfile(await request<Profile>("/me/username", {
-        method: "PUT",
-        body: JSON.stringify({ username }),
-      }));
+      updateProfile(
+        await request<Profile>("/me/username", {
+          method: "PUT",
+          body: JSON.stringify({ username }),
+        }),
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -400,16 +407,20 @@ function Root() {
   ) : settingsPage ? (
     <SettingsScreen
       profile={me}
-      privacy={settingsPage === "privacy"}
+      page={settingsPage}
       busy={busy}
       error={error}
       onBack={() => {
         setError("");
-        setSettingsPage(settingsPage === "privacy" ? "main" : null);
+        setSettingsPage(settingsPage === "main" ? null : "main");
       }}
       onPrivacy={() => {
         setError("");
         setSettingsPage("privacy");
+      }}
+      onTerms={() => {
+        setError("");
+        setSettingsPage("terms");
       }}
       onChangeUsername={(username) => void changeUsername(username)}
       onChangeAvatar={() => void changeAvatar()}

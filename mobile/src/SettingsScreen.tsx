@@ -10,15 +10,18 @@ import {
 } from "react-native";
 import type { Profile } from "./api";
 import { useCameraAccess } from "./CameraAccess";
+import { LegalSections, TermsDocument } from "./TermsAndConditions";
+import { PRIVACY_INTRO, PRIVACY_SECTIONS } from "./legal";
 import { Avatar, Button, colors, ErrorText, Icon, Input, s } from "./ui";
 
 type Props = {
   profile: Profile;
-  privacy: boolean;
+  page: "main" | "privacy" | "terms";
   busy: boolean;
   error: string;
   onBack: () => void;
   onPrivacy: () => void;
+  onTerms: () => void;
   onChangeUsername: (username: string) => void;
   onChangeAvatar: () => void;
   onSignOut: () => void;
@@ -124,22 +127,29 @@ function Permissions() {
 
 export default function SettingsScreen({
   profile,
-  privacy,
+  page,
   busy,
   error,
   onBack,
   onPrivacy,
+  onTerms,
   onChangeUsername,
   onChangeAvatar,
   onSignOut,
 }: Props) {
+  const documentTitle =
+    page === "privacy"
+      ? "Privacy"
+      : page === "terms"
+        ? "Terms & Conditions"
+        : "Settings";
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={s.root}
     >
       <ScrollView
-        key={privacy ? "privacy" : "settings"}
+        key={page}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
       >
@@ -147,7 +157,7 @@ export default function SettingsScreen({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
-              privacy ? "Back to settings" : "Back to profile"
+              page === "main" ? "Back to profile" : "Back to settings"
             }
             disabled={busy}
             onPress={onBack}
@@ -156,32 +166,16 @@ export default function SettingsScreen({
             <Icon name="arrow-back" color={colors.yellow} />
           </Pressable>
           <Text accessibilityRole="header" style={s.h1}>
-            {privacy ? "Privacy" : "Settings"}
+            {documentTitle}
           </Text>
         </View>
-        {privacy ? (
+        {page === "privacy" ? (
           <View style={s.card}>
-            <Text accessibilityRole="header" style={s.h2}>
-              Who can see my photos?
-            </Text>
-            <Text style={s.h3}>Invite-only nights</Text>
-            <Text style={s.body}>
-              People who join a night can see the photos shared in that night.
-              Finished nights and their photos are available to members in their
-              history.
-            </Text>
-            <Text style={s.h3}>Invited spectators</Text>
-            <Text style={s.body}>
-              Where spectator invites are available, spectators can see and
-              react to photos in the night they join. Posting and scoring are
-              for players.
-            </Text>
-            <Text style={s.h3}>Battle visibility</Text>
-            <Text style={s.body}>
-              The host can hide opposing teams’ scores and photos during a
-              Battle. When the Battle ends, both teams can see the results and
-              photos.
-            </Text>
+            <LegalSections intro={PRIVACY_INTRO} sections={PRIVACY_SECTIONS} />
+          </View>
+        ) : page === "terms" ? (
+          <View style={s.card}>
+            <TermsDocument />
           </View>
         ) : (
           <>
@@ -222,6 +216,22 @@ export default function SettingsScreen({
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={s.h2}>Privacy</Text>
                 <Text style={s.body}>Who can see my photos?</Text>
+              </View>
+              <Icon name="chevron-forward" color={colors.muted} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={onTerms}
+              style={({ pressed }) => [
+                s.card,
+                s.between,
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={s.h2}>Terms & Conditions</Text>
+                <Text style={s.body}>Read the current agreement</Text>
               </View>
               <Icon name="chevron-forward" color={colors.muted} />
             </Pressable>

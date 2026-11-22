@@ -70,6 +70,7 @@ Camera access is offered after sign-in. A player may continue with **Later** and
 
 ### Social, accounts, and history
 
+- Versioned Terms & Conditions block first use until accepted, remember acceptance locally, and remain available beside the expanded Privacy notice in Settings.
 - Username/password accounts, optional avatars, and legal-age self-attestation.
 - Multiple active competitions and private invitation codes.
 - Full-screen photo pairs and one changeable reaction per person per photo.

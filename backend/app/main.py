@@ -6,6 +6,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, timedelta
+from weakref import WeakValueDictionary
 from zoneinfo import ZoneInfo
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
@@ -85,7 +86,9 @@ PARTY_PROMPTS = [
 LIVE_REVISION_CACHE_SECONDS = 0.25
 LIVE_HEARTBEAT_SECONDS = 2
 _live_revision_cache: dict[str, tuple[float, str]] = {}
-_live_revision_locks: dict[str, threading.Lock] = {}
+# Waiting and active readers hold their own references. Unused locks can expire
+# independently of cached revisions when a competition stops receiving reads.
+_live_revision_locks: WeakValueDictionary[str, threading.Lock] = WeakValueDictionary()
 _live_revision_guard = threading.Lock()
 _live_revision_reads: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[str]] = {}
 _daily_celebration_lock = threading.Lock()
@@ -450,9 +453,14 @@ async def avatar(request: Request, photo: UploadFile = File(), user: User = Depe
 def store_avatar(photo, user, db):
     data = storage.validate_image(photo)
     key = f"avatars/{user.id}/{uuid.uuid4()}.jpg"
-    old = user.avatar
     storage.put(key, data)
     try:
+        avatar_url = storage.photo_url(key)
+        # Serialize replacements and read the avatar actually being replaced.
+        old = db.execute(
+            update(User).where(User.id == user.id).values(avatar=User.avatar)
+            .returning(User.avatar).execution_options(synchronize_session=False)
+        ).scalar_one()
         user.avatar = key
         db.commit()
     except Exception:
@@ -460,7 +468,7 @@ def store_avatar(photo, user, db):
         raise
     if old:
         storage.remove(old)
-    return profile(user)
+    return {"id": user.id, "username": user.username, "avatar_url": avatar_url}
 
 
 @app.get("/competitions", response_model=list[EventOut])

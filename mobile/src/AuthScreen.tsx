@@ -195,6 +195,7 @@ export default function AuthScreen({
             <Pressable
               accessibilityRole="checkbox"
               accessibilityState={{ checked: adult, disabled: busy }}
+              aria-checked={adult}
               disabled={busy}
               onPress={() => setAdult(!adult)}
               style={a.ageRow}

@@ -37,6 +37,7 @@ def stats(samples):
     ordered = sorted(samples)
     return {key: round(value, 3) for key, value in {
         "avg": statistics.mean(ordered),
+        "p50": statistics.median(ordered),
         "p95": ordered[math.ceil(len(ordered) * .95) - 1],
         "p99": ordered[math.ceil(len(ordered) * .99) - 1],
         "max": ordered[-1],
@@ -375,7 +376,7 @@ class Rehearsal:
             await asyncio.sleep(1)
         self.report["abort_recovery_seconds"] = None
 
-    async def run(self, levels, seconds, spike):
+    async def run(self, levels, seconds, spike, login_spike, soak_seconds):
         async with self.measure("host-setup", 1) as phase:
             await self.host.login(phase, self.password)
             await self.host.request(phase, "create", "POST", "/competitions", (201,),
@@ -389,6 +390,11 @@ class Rehearsal:
                         group.create_task(self.activate(phase, player))
             await self.plateau(f"steady-{level}", self.players, seconds)
         if spike:
+            if login_spike:
+                async with self.measure("login-spike", len(self.players)) as phase:
+                    async with asyncio.TaskGroup() as group:
+                        for player in self.players:
+                            group.create_task(player.login(phase, self.password))
             async with self.measure("history-spike", len(self.players)) as phase:
                 for _ in range(3):
                     async with asyncio.TaskGroup() as group:
@@ -400,6 +406,8 @@ class Rehearsal:
                     for player in self.players:
                         group.create_task(self.submit(phase, player))
                         group.create_task(player.request(phase, "detail", "GET", self.event))
+        if soak_seconds:
+            await self.plateau(f"soak-{len(self.players)}", self.players, soak_seconds)
         recovery = self.players[:10]
         await self.plateau(f"recovery-{len(recovery)}", recovery, min(seconds, 15))
         await self.integrity()
@@ -478,7 +486,7 @@ async def exercise(port, server, pg, root, args, password, photo, report):
         manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
         game = Rehearsal(client, base, manifest, photo, password, api_pid, pg, report, args.rss_limit)
         try:
-            await game.run(args.levels, args.seconds, not args.no_spike)
+            await game.run(args.levels, args.seconds, not args.no_spike, args.login_spike, args.soak_seconds)
         except Exception:
             await game.probe_recovery()
             raise
@@ -491,10 +499,12 @@ def main():
     parser.add_argument("--postgres-bin", type=lambda path: Path(path).resolve(), help="PostgreSQL bin directory. Default: disposable SQLite.")
     parser.add_argument("--levels", nargs="+", type=int, default=[10, 25, 50, 60])
     parser.add_argument("--seconds", type=int, default=25, help="Duration of each steady stage")
+    parser.add_argument("--soak-seconds", type=int, default=0, help="Optional sustained stage at the highest user count")
     parser.add_argument("--history", type=int, default=24)
     parser.add_argument("--photo-size", type=int, default=600)
     parser.add_argument("--rss-limit", type=int, default=480, help="Abort if API RSS exceeds this MiB limit")
     parser.add_argument("--no-spike", action="store_true")
+    parser.add_argument("--login-spike", action="store_true", help="Also sign all players in simultaneously during the spike stage")
     parser.add_argument("--label", default="local")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -502,13 +512,18 @@ def main():
         parser.error("--levels must be increasing and between 2 and 60")
     if not 5 <= args.seconds <= 120 or not 1 <= args.history <= 100 or not 32 <= args.photo_size <= 1200:
         parser.error("Use 5–120 seconds, 1–100 archived nights, and a photo size of 32–1200 pixels")
+    if not 0 <= args.soak_seconds <= 600:
+        parser.error("Use 0–600 soak seconds")
+    if args.login_spike and (args.no_spike or args.levels[-1] > 49):
+        parser.error("A login spike requires spike stages and at most 49 players (100 attempts per source IP)")
     scratch = ROOT / ".tools"
     scratch.mkdir(exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="capacity-", dir=scratch))
     photo = synthetic_photo(args.photo_size)
     report = {"label": args.label, "database": "postgresql" if args.postgres_bin else "sqlite",
               "archive_nights": args.history, "photo_pair_bytes": len(photo) * 2,
-              "stage_seconds": args.seconds, "logical_cpus": psutil.cpu_count(), "phases": []}
+              "stage_seconds": args.seconds, "soak_seconds": args.soak_seconds,
+              "logical_cpus": psutil.cpu_count(), "phases": []}
     print(f"Disposable loopback test data and logs: {root}", flush=True)
     try:
         with database(root, args.postgres_bin) as (url, pg):
@@ -519,7 +534,7 @@ def main():
             env.update(CAPACITY_SANDBOX=str(root), CAPACITY_PASSWORD=password, DATABASE_URL=url,
                        STORAGE_MODE="local", UPLOAD_DIR=str(root / "uploads"), JWT_SECRET=secrets.token_hex(32),
                        PUBLIC_URL=f"http://127.0.0.1:{port}", PYTHONPATH=str(BACKEND),
-                       PASSWORD_HASH_CONCURRENCY="2", CORS_ORIGINS="[]")
+                       PASSWORD_HASH_CONCURRENCY="2", CORS_ORIGINS="[]", OPENAI_API_KEY="")
             fixture = root / "uploads" / "fixture"
             fixture.mkdir(parents=True)
             for side in ("rear", "front"):

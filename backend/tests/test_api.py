@@ -2,6 +2,7 @@ import io
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Barrier, Event
 from urllib.parse import urlparse
 import pytest
@@ -58,6 +59,33 @@ def test_registration_and_auth(client):
     assert client.post("/auth/register", json={"username": "minimum", "password": "abcde1!", "legal_age": True}).status_code == 201
     assert client.post("/auth/login", json={"username": "alex", "password": "incorrect-password"}).status_code == 401
     assert client.post("/auth/login", json={"username": "ALEX", "password": "strong-password-123"}).status_code == 200
+
+
+def test_concurrent_registration_enforces_normalized_uniqueness(client):
+    usernames = ["alice", "ALICE", "bruno", "carla", "diogo", "eva"]
+    start = Barrier(len(usernames))
+
+    def register(username):
+        start.wait(timeout=5)
+        return username.lower(), client.post("/auth/register", json={
+            "username": username, "password": "disposable-test-123!", "legal_age": True,
+        })
+
+    with ThreadPoolExecutor(max_workers=len(usernames)) as pool:
+        results = list(pool.map(register, usernames))
+
+    assert sorted(response.status_code for _, response in results) == [201] * 5 + [409]
+    profiles = {}
+    for username, response in results:
+        if response.status_code == 201:
+            headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
+            profile = client.get("/me", headers=headers).json()
+            assert profile["username"] == username
+            profiles[username] = profile["id"]
+        else:
+            assert username == "alice"
+    assert set(profiles) == {name.lower() for name in usernames}
+    assert len(set(profiles.values())) == len(profiles)
 
 
 def test_username_change_preserves_account_membership_and_session(client):
@@ -391,6 +419,31 @@ def test_avatar_and_signed_link_expiry(client):
     token = encode("anything.jpg", "photo", -1)
     assert client.get("/media", params={"token": token}).status_code == 401
     assert client.get("/media", params={"token": encode("../outside", "photo", 60)}).status_code == 403
+
+
+def test_concurrent_avatar_replacements_remove_superseded_files(client, monkeypatch):
+    auth, _ = account(client)
+    files = {"photo": ("avatar.jpg", image(), "image/jpeg")}
+    assert client.put("/me/avatar", headers=auth, files=files).status_code == 200
+
+    wrote_image = Barrier(2)
+    put = storage.put
+
+    def simultaneous_put(key, data):
+        put(key, data)
+        wrote_image.wait(timeout=5)
+
+    monkeypatch.setattr(storage, "put", simultaneous_put)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        requests = [pool.submit(client.put, "/me/avatar", headers=auth, files=files) for _ in range(2)]
+        assert [request.result().status_code for request in requests] == [200, 200]
+
+    profile = client.get("/me", headers=auth).json()
+    assert client.get(profile["avatar_url"]).status_code == 200
+    with Session() as db:
+        current_avatar = db.get(User, profile["id"]).avatar
+    folder = Path(storage.settings.upload_dir) / "avatars" / profile["id"]
+    assert list(folder.glob("*.jpg")) == [folder / Path(current_avatar).name]
 
 
 def test_dense_rank_groups_and_pagination(client):

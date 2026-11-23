@@ -69,9 +69,16 @@ export default function CompetitionScreen({
 }) {
   const [player, setPlayer] = useState<string | undefined>();
   const [expanded, setExpanded] = useState<Photo | null>(null);
-  const [reacting, setReacting] = useState<string | null>(null);
-  const { detail, error, connected, refresh, loadMore, loading, replacePhoto } =
-    useCompetition(id, player);
+  const {
+    detail,
+    error,
+    connected,
+    refresh,
+    loadMore,
+    loading,
+    react,
+    reactionFeedback,
+  } = useCompetition(id, player);
   const [liveTab, setLiveTab] = useState<LiveTab | null>(null);
   const [closedTab, setClosedTab] = useState<CompetitionTab | "moments" | null>(
     null,
@@ -227,28 +234,6 @@ export default function CompetitionScreen({
       setNameError((e as Error).message);
     } finally {
       setRenaming(false);
-    }
-  }
-  async function react(photo: Photo, emoji: string) {
-    if (reacting) return;
-    setReacting(photo.id);
-    setActionError("");
-    try {
-      const updated = await request<Photo>(
-        `/competitions/${id}/photos/${photo.id}/reaction`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            emoji: photo.my_reaction === emoji ? null : emoji,
-          }),
-        },
-      );
-      replacePhoto(updated);
-      if (!connected) void refresh();
-    } catch (e) {
-      setActionError((e as Error).message);
-    } finally {
-      setReacting(null);
     }
   }
   if (partyCapture && detail)
@@ -689,9 +674,7 @@ export default function CompetitionScreen({
                       accessibilityLabel={`${label}, ${photo.reactions?.[emoji] ?? 0} reactions`}
                       accessibilityState={{
                         selected: photo.my_reaction === emoji,
-                        disabled: !!reacting,
                       }}
-                      disabled={!!reacting}
                       onPress={() => void react(photo, emoji)}
                       style={[
                         s.row,
@@ -722,6 +705,13 @@ export default function CompetitionScreen({
                     </Pressable>
                   ))}
                 </View>
+                {reactionFeedback.get(photo.id)?.error && (
+                  <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+                    <ErrorText
+                      message={reactionFeedback.get(photo.id)?.error ?? ""}
+                    />
+                  </View>
+                )}
               </View>
             ))}
             {detail.next_cursor && (

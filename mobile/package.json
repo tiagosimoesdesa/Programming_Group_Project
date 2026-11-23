@@ -8,7 +8,8 @@
     "preview": "expo start --web --port 8082 --localhost",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
-    "api:types": "openapi-typescript ../backend/openapi.json -o src/generated/api.ts"
+    "api:types": "openapi-typescript ../backend/openapi.json -o src/generated/api.ts",
+    "test:e2e": "uv --directory ../backend run python -m scripts.browser_test"
   },
   "dependencies": {
     "@expo/metro-runtime": "~58.0.17",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@types/react": "~19.3.0",
     "openapi-typescript": "^7.10.1",
+    "playwright-core": "1.65.1",
     "prettier": "^3.10.0",
     "typescript": "~5.9.3"
   },

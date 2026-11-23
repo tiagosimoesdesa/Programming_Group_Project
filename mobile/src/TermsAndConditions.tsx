@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -134,6 +135,7 @@ function TermsReview({
       </View>
       <ScrollView
         accessibilityLabel="Terms and Conditions document"
+        tabIndex={Platform.OS === "web" ? 0 : undefined}
         contentContainerStyle={l.scrollContent}
         onScroll={trackEnd}
         scrollEventThrottle={16}

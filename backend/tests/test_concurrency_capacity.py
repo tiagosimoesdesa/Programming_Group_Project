@@ -61,3 +61,13 @@ def test_live_revision_shares_an_in_flight_refresh(monkeypatch):
 
     asyncio.run(scenario())
     assert calls == ["refreshing-event"]
+
+
+def test_completed_live_reads_do_not_retain_per_competition_locks(monkeypatch):
+    monkeypatch.setattr(main, "_read_live_revision", lambda event_id: f"{event_id}:revision")
+    for index in range(300):
+        event_id = f"completed-event-{index}"
+        assert main._cached_live_revision(event_id) == f"{event_id}:revision"
+
+    with main._live_revision_guard:
+        assert not any(key.startswith("completed-event-") for key in main._live_revision_locks)

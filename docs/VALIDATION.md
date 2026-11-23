@@ -2,6 +2,110 @@
 
 Automated checks were run on Windows during implementation. Physical-device checks remain in `DEVICE_TESTS.md`.
 
+## Pre-launch audit — 23 November 2026
+
+### Scope and release decision
+
+**NO-GO for public launch.** The audit started from `main` at `3e0adb4`. Core local journeys passed on SQLite, PostgreSQL, Chrome, and Edge. Production anonymous smoke checks passed for the landing page, API `/health`, and the web `/api/health` proxy. Release sign-off still needs hosted end-to-end and capacity verification, the physical iPhone/Android checks, and an approved privacy and retention process with a practical way to request account erasure. The Render dashboard checks were deferred by the project owner. The baseline public deployment and these audit-branch changes have separate verification records.
+
+| Area | Implementation and coverage |
+| --- | --- |
+| Accounts | Expo sign-up, login, web session recovery and logout. FastAPI enforces account validation, normalizes usernames, hashes passwords with Argon2, rotates refresh sessions and checks web origins. The UI stores the Terms decision locally and opens the same document from Settings. Password recovery and account deletion are absent from the current feature set. |
+| Competitions | Classic check-ins, dense standings, filters, paged feeds, reactions, spectators and recaps. Party adds timed challenges and voting. Battle adds teams, a lobby and private or public results. HTTP checks cover authoritative state and permissions. Browser rehearsals cover interaction and cross-session updates. |
+| Profile and history | Username and avatar changes, permission settings, and personal hide, restore and removal of finished nights. Personal history removal preserves shared results and media. |
+| Data and integrations | SQLAlchemy with Alembic, SQLite locally, PostgreSQL in a disposable cluster, private files locally, Supabase signing mocked in API tests, and the bundled Lisbon calendar with simulated rollout and mocked OpenAI responses. Render and Supabase production settings and live provider dependencies require separate verification. |
+| Frontend | TypeScript and three Expo exports. Browser exercises included desktop, tablet and mobile-sized viewports, basic keyboard focus, camera permission handling, file picking, and simulated camera capture. Native camera hardware, screen readers, Safari and full WCAG 2.2 AA conformance remain outside the verified results. [WCAG 2.2](https://www.w3.org/TR/WCAG22/) |
+
+### Verification results
+
+The table counts named tests, browser journeys, or explicitly listed checks. Categories use different units and overlapping evidence, so their totals should be read separately. A blocked item needs equipment, an authorized environment, or a release decision. A check listed as never executed was outside the runtime coverage of this audit.
+
+| Category | Tests executed | Passed | Failed | Blocked | Unit and coverage |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Functional | 8 | 8 | 0 | 1 | Existing Chrome rehearsal groups covering Terms, session recovery, real browser entry points for all modes, login errors, countdown transitions, history, filters, reactions, profile, and photo retries. Hosted authenticated rehearsal blocked pending disposable hosted accounts. |
+| Security | 4 | 3 | 1 | 2 | Existing defensive auth/upload/isolation checks as one group, locked PyPI advisory scan, scoped Git secret-pattern scan, npm advisory scan. Provider policy/configuration verification and privacy/erasure sign-off blocked. |
+| Database | 4 | 4 | 0 | 1 | SQLite and PostgreSQL migration/drift checks, concurrent correctness and file audit, and recovery after a disposable PostgreSQL restart. Hosted backup restore was outside the authorized environment. |
+| 40-user load | 8 | 6 | 2 | 1 | Three paced plateaus, three synchronized spike phases, the 10-minute soak, and recovery. The history and mixed upload/detail bursts missed the ordinary-operation latency gate. Hosted 40-user capacity remains blocked pending a comparable isolated environment. |
+| Frontend | 18 | 18 | 0 | 2 | Five repeatable browser cases on each of Chrome and Edge, one typecheck, one SDK check, one three-platform export, and five axe-core screen scans. Physical-device acceptance and complete accessibility review blocked. |
+| Performance | 3 | 2 | 1 | 1 | Steady API latency and local browser interaction timing met the initial goal. Synchronized traffic missed it. Hosted traces and cold-start distribution remain pending. |
+| Regression | 160 | 160 | 0 | 0 | 80 pytest cases each on SQLite and PostgreSQL. OpenAPI and TypeScript regeneration produced no tracked diff. |
+
+Existing defensive automated coverage verified login limits, refresh rotation, rejection of untrusted cookie origins, sensitive validation response redaction, private membership, host and spectator rules, signed photo expiry, upload format handling, and hidden Battle views. Code review traced SQLAlchemy database operations and storage and OpenAI client configuration. This was a targeted review using OWASP ASVS as a reference. Exploit development and attack execution were outside runtime coverage. [OWASP ASVS 5.0.0](https://asvs.owasp.org/)
+
+Never executed on production during this audit: authenticated state-changing journeys, load, database failover, backup restore, private bucket and key-policy checks, and live OpenAI calls. Provider dashboard protection, retention, data-controller contact and erasure procedures still need team verification. Versioned local Terms acceptance serves contractual acknowledgement. The repository's [legal publication checklist](LEGAL_PUBLICATION_CHECKLIST.md) tracks the privacy review and unresolved provider questions. [GDPR official text](https://eur-lex.europa.eu/eli/reg/2016/679/oj)
+
+### Findings and fixes
+
+| Severity | Finding and affected component | Evidence and root cause | Fix and remaining risk |
+| --- | --- | --- | --- |
+| High | Public launch privacy and retention readiness, `docs/LEGAL_PUBLICATION_CHECKLIST.md` and account settings | The app can remove a night from personal history. The account and shared photos remain, and the repository documents gaps in approved erasure, retention, controller contact and provider recovery. | Open. Product and provider decisions are required. The audit preserved existing account and shared-history semantics. |
+| Medium | Concurrent avatar replacements retained superseded photos, `backend/app/main.py` | Two normal, overlapping replacements for the same test account started with the same prior avatar. Both changes then tried to remove that same object. The new regression failed against the unchanged `main` snapshot with one extra file. | Fixed. Replacements read the prior object under a database row/write lock, then clean it up after commit. Synthetic concurrent upload tests leave one stored object and a working current URL on SQLite and PostgreSQL. Supabase object deletion still depends on provider availability. |
+| Medium | Per-competition WebSocket locks accumulated, `backend/app/main.py` | A controlled run of 300 distinct completed revision reads on `main` left 300 locks. The lock map held strong references independently of the revision-cache expiry. | Fixed. Active and waiting callers keep the lock alive while inactive locks are reclaimed. The same diagnostic leaves zero locks. Tests verify shared concurrent reads and cancellation handling. |
+| Medium | Signup checkbox state missing from web accessibility markup, `mobile/src/AuthScreen.tsx` | Axe flagged the age-attestation checkbox for missing `aria-checked`. The Expo web renderer used the checkbox role but did not reflect its native accessibility state as a web attribute. | Fixed. The browser regression confirms unchecked and checked values before submitting. Native assistive-technology behaviour needs device confirmation. |
+| Medium | npm advisory in the Expo fingerprint toolchain, `mobile/package-lock.json` | `npm audit` listed three moderate package entries propagated from one `minimatch` advisory. The installed Expo 58 release uses fingerprint 0.21.10, which requires `minimatch` 10. The audit CLI proposes an Expo 52 downgrade. | Open pending a compatible upstream update. The audited Expo 58 dependency uses the package in build tooling. Review exposure separately if builds accept untrusted project or pattern configuration. [Advisory GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) |
+| Medium | Synchronized requests exceed the latency target, `backend/scripts/capacity_test.py` | Two 40-client rehearsals showed a repeatable history burst and mixed photo/detail burst latency over one second. The synchronized login queue also exceeded three seconds at p95. | Open. The ordinary read/write mix passes and recovers after the burst. The collected worker, SQL and client timings below identify where to measure further on equivalent staging. |
+| Low | Database availability presents a generic error, FastAPI connection handling | While the disposable PostgreSQL cluster was stopped, `/health` and the current-user request returned HTTP 500 without driver details. Both returned 200 on the first request after recovery, with the same account still available. | Automatic reconnection verified. An actionable temporary-unavailability response during a database outage remains pending. |
+| Low | Terms viewport lacked explicit keyboard focus, `mobile/src/TermsAndConditions.tsx` | Axe flagged the scroll region without a declared tab stop. Chrome's default behaviour allowed keyboard scrolling during the first check. | Fixed with an explicit web tab stop. The browser test uses End to reach the acceptance threshold. |
+| Low | Framing policy unverified, Render web landing response | The unauthenticated HTTPS landing page supplied HSTS, `nosniff` and a same-origin referrer policy. That response lacked `Content-Security-Policy` and `X-Frame-Options`. | Open for deployment review. Confirm embedding requirements and prefer an explicit `frame-ancestors` policy. |
+
+The scoped filename and secret-pattern scan returned no matches in reviewed tracked files or reachable history. OSV returned 38 results for 38 locked Python runtime packages with no advisories. These scans cover their signatures and advisory feeds. The test run reported one upstream deprecation warning for FastAPI's Starlette HTTPX test client.
+
+Axe-core 4.14.1 found zero violations on the settled Terms, login, sign-up, Tonight and Settings screens in Chrome at 390×844 with reduced motion. It marked 2–3 rules per screen for manual review. An earlier scan during normal-motion transitions flagged temporary contrast in Tonight actions. Contrast during transitions, Safari, screen readers and native controls still need manual verification.
+
+### Reproduce and rehearse
+
+Use the usual backend and mobile installation from the README. The committed browser runner exports the production web bundle, creates a disposable SQLite database and uploads directory, and serves the same-origin application on loopback. Install the Playwright-managed Chromium with `npx playwright-core install chromium` from `mobile`, or set `E2E_BROWSER` to an installed Chrome or Edge executable. Each browser case uses isolated synthetic accounts and, where applicable, simulated camera images.
+
+```powershell
+cd mobile
+npm run test:e2e
+npm run typecheck
+npx expo install --check
+npx expo export --platform all --max-workers 2
+cd ../backend
+uv run pytest -q
+uv run --with psutil==7.2.2 python -m scripts.capacity_test --postgres-bin C:/path/to/postgresql/bin --levels 10 20 40 --seconds 25 --soak-seconds 600 --login-spike --output ../.tools/launch-audit-capacity.json
+```
+
+```text
+SQLite:     80 passed, 1 warning in 56.82s
+PostgreSQL: 80 passed, 1 warning in 69.58s (0:01:09)
+Alembic:    No new upgrade operations detected.
+Chrome:     tests 5, pass 5, fail 0
+Edge:       tests 5, pass 5, fail 0
+Expo:       Dependencies are up to date
+OpenAPI and TypeScript contracts: git diff exit 0
+Database outage: /me HTTP 500; /health HTTP 500
+Database restored: /health and /me HTTP 200 on first request; both took 0.109 s
+```
+
+For presentation rehearsal, use two separate browser profiles and synthetic accounts in an approved environment. Have one host create a Classic night, the other join, then check in a synthetic photo pair, react, and open the finished recap. The five-case offline fallback also exercises Party voting and private Battle. Keep the local clone, dependencies and Chromium or Edge ready so `npm run test:e2e` can demonstrate the integrated journeys on loopback. Hosted demo accounts, sample rooms, and a physical-phone rehearsal are still pending.
+
+### 40-user capacity and integrity
+
+Two runs used one instrumented API worker, loopback PostgreSQL, local photo storage, and a Windows host with 16 logical CPUs. The workload seeded 24 archived nights per player and one shared Classic night, plus a host outside the 40-player count. Each virtual user signed in, joined, and performed a paced mix of feed and history reads, player filtering, feed pagination, archived-night opens, signed photo downloads, reactions, and 435,894-byte photo-pair uploads. Think times were 0.65–2.5 seconds. Twenty-seven participants held authenticated WebSockets. Recovery had 10 active HTTP clients while existing sockets stayed open. The driver, API and database shared the test host. Hosted storage, WAN latency and provider CPU limits require separate evidence.
+
+The repeat used the final runner with median reporting. Times are milliseconds unless marked otherwise. Expected 401, 404 and 409 responses in the integrity stage count as successful assertions.
+
+| Stage | Active players | Observed seconds | Requests | Failures | RPS | Mean | p50 | p95 | p99 | Ordinary p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Normal traffic | 10 | 25.14 | 148 | 0 | 5.89 | 58 | 50 | 115 | 142 | 97 |
+| Moderate traffic | 20 | 25.17 | 308 | 0 | 12.24 | 79 | 59 | 127 | 169 | 112 |
+| Target traffic | 40 | 25.14 | 606 | 0 | 24.10 | 78 | 68 | 150 | 236 | 137 |
+| Synchronized login and profile reads | 40 | 4.21 | 80 | 0 | 18.99 | 1,151 | 306 | 3,689 | 4,092 | 74 |
+| Three synchronized history waves | 40 | 4.34 | 120 | 0 | 27.64 | 712 | 649 | 1,310 | 1,409 | 1,310 |
+| Synchronized uploads and detail reads | 40 | 3.34 | 80 | 0 | 23.99 | 1,869 | 1,875 | 3,095 | 3,274 | 2,668 |
+| Sustained traffic | 40 | 600.16 | 14,430 | 0 | 24.04 | 88 | 75 | 180 | 281 | 160 |
+| Recovery | 10 | 15.00 | 89 | 0 | 5.93 | 61 | 59 | 85 | 146 | 79 |
+
+The repeat completed 16,157 total HTTP operations with zero unexpected failures. The first run completed 15,603 total operations with one history transport read error. Its 600.18-second soak delivered 23.18 RPS with one error in 13,909 requests (0.007%) and 273 ms overall p95. Both paced 40-user runs met the under-1-second ordinary latency and under-1% failure goals. Both missed the ordinary latency target for the synchronized read and upload/detail spikes. Browser interactions in the separate three-mode synthetic-camera rehearsal reached the expected view in 25–536 ms on the tested local host.
+
+During the repeated soak, API RSS peaked at 124 MiB and the API averaged 61% of one logical core. PostgreSQL averaged 18% of one logical core and peaked at 250 MiB aggregate process RSS, which may count shared mappings more than once. SQL p95 was 38 ms and the API pool peaked at 12 of 15. At peak login, 32 sampled jobs were queued, API RSS reached 243 MiB, and SQL p95 was 36 ms. At peak mixed upload/detail, the general queue reached nine, the upload queue reached seven, pool use peaked at 11, and SQL p95 was 158 ms. History-spike client p95 was 1,310 ms while instrumented server p95 was 28 ms, suggesting that local client, connection, or scheduling delays contributed to that phase. These readings provide no evidence of PostgreSQL pool exhaustion during the spikes.
+
+The final audit matched 1,006 accepted upload IDs to their persisted rows and photos and checked all 41 members' final scores. It found zero missing files, orphan files, database deadlocks or temporary spill bytes. Twelve duplicate upload requests mapped to one accepted submission, 12 concurrent reaction updates left one reaction for the account, and two simultaneous refresh requests produced exactly one successful rotation. The 27 connected viewers all reached the final revision. The separate full suite covered concurrent normalized usernames and avatar updates, cross-account access controls, and write rollback after a simulated storage failure.
+
+**Capacity conclusion.** The app handled 40 paced users for ten minutes on this local PostgreSQL workload. The 40-user synchronized experience missed the latency target, and hosted capacity is still unverified. The report supports a local presentation rehearsal with staggered sign-ins and uploads. It does not establish production capacity.
+
 ## Phase 11 capacity report — 21 November 2026
 
 ### Infrastructure audit

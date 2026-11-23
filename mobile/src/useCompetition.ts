@@ -2,21 +2,44 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { BASE, Detail, liveToken, Photo, request } from "./api";
 
+type Reaction = string | null;
+type ReactionFeedback = { emoji: Reaction; error?: never } | { error: string };
+
+function previewReaction(photo: Photo, emoji: Reaction): Photo {
+  const previous = photo.my_reaction ?? null;
+  if (previous === emoji) return photo;
+  const reactions = { ...photo.reactions };
+  if (previous) {
+    const count = (reactions[previous] ?? 0) - 1;
+    if (count > 0) reactions[previous] = count;
+    else delete reactions[previous];
+  }
+  if (emoji) reactions[emoji] = (reactions[emoji] ?? 0) + 1;
+  return { ...photo, my_reaction: emoji, reactions };
+}
+
 export function useCompetition(id: string, player?: string) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
   const latest = useRef<Detail | null>(null);
-  const sequence = useRef(0);
-  const query = useMemo(
-    () => ({
+  const reactionVersion = useRef(0);
+  const reactionWrites = useRef(new Map<string, { desired: Reaction }>());
+  const [reactionFeedback, setReactionFeedback] = useState(
+    () => new Map<string, ReactionFeedback>(),
+  );
+  const query = useMemo(() => {
+    const path = `/competitions/${id}${player ? `?player=${encodeURIComponent(player)}` : ""}`;
+    return {
+      path,
+      pagePath: `${path}${player ? "&" : "?"}before=`,
       controller: new AbortController(),
       flight: null as Promise<void> | null,
       pending: false,
-    }),
-    [id, player],
-  );
+      pages: 0,
+    };
+  }, [id, player]);
   const refresh = useCallback(
     (afterChange = true) => {
       const signal = query.controller.signal;
@@ -25,14 +48,37 @@ export function useCompetition(id: string, player?: string) {
         query.pending ||= afterChange;
         return query.flight;
       }
-      const path = `/competitions/${id}${player ? `?player=${encodeURIComponent(player)}` : ""}`;
       query.flight = (async () => {
         do {
           query.pending = false;
-          sequence.current++;
+          const version = reactionVersion.current;
           try {
-            const value = await request<Detail>(path, { signal });
+            const value = await request<Detail>(query.path, { signal });
+            let phaseChanged = false;
+            // Keep earlier photos on screen when a live reaction refreshes the feed.
+            for (
+              let page = 1;
+              page < query.pages && value.next_cursor;
+              page++
+            ) {
+              const older = await request<Detail>(
+                query.pagePath + value.next_cursor,
+                { signal },
+              );
+              if (value.battle?.status !== older.battle?.status) {
+                phaseChanged = true;
+                break;
+              }
+              value.feed.push(...older.feed);
+              value.next_cursor = older.next_cursor;
+            }
             if (!signal.aborted) {
+              // Retry a snapshot that predates a completed write or spans a Battle phase change.
+              if (phaseChanged || version !== reactionVersion.current) {
+                query.pending = true;
+                continue;
+              }
+              if (!query.pages) query.pages = 1;
               latest.current = value;
               setDetail(value);
               setError("");
@@ -46,7 +92,7 @@ export function useCompetition(id: string, player?: string) {
       });
       return query.flight;
     },
-    [id, player, query],
+    [query],
   );
   const refreshCurrent = useRef(refresh);
   useEffect(() => {
@@ -57,33 +103,83 @@ export function useCompetition(id: string, player?: string) {
     void refresh(false);
     return () => controller.abort();
   }, [query, refresh]);
-  function replacePhoto(photo: Photo) {
-    // Keep any older pages already loaded while the next live refresh runs.
-    sequence.current++;
-    setDetail(
-      (current) =>
-        current && {
-          ...current,
-          feed: current.feed.map((item) =>
-            item.id === photo.id ? photo : item,
-          ),
-        },
-    );
+  function showReactionFeedback(photoId: string, feedback?: ReactionFeedback) {
+    setReactionFeedback((current) => {
+      const next = new Map(current);
+      if (feedback) next.set(photoId, feedback);
+      else next.delete(photoId);
+      return next;
+    });
+  }
+  async function react(photo: Photo, emoji: string) {
+    const pending = reactionWrites.current.get(photo.id);
+    const selected = pending ? pending.desired : photo.my_reaction;
+    const desired = selected === emoji ? null : emoji;
+    showReactionFeedback(photo.id, { emoji: desired });
+    if (pending) {
+      pending.desired = desired;
+      return;
+    }
+
+    // Each photo has one write in flight. New taps replace its queued choice.
+    const write = { desired };
+    reactionWrites.current.set(photo.id, write);
+    for (;;) {
+      const sent = write.desired;
+      const base = latest.current;
+      let failure: ReactionFeedback | undefined;
+      let needsRefresh = !connected;
+      try {
+        const updated = await request<Photo>(
+          `/competitions/${id}/photos/${photo.id}/reaction`,
+          { method: "PUT", body: JSON.stringify({ emoji: sent }) },
+        );
+        reactionVersion.current++;
+        // The refresh may already include reactions saved after this write.
+        const refreshed = latest.current !== base;
+        needsRefresh ||= refreshed;
+        setDetail(
+          (current) =>
+            current && {
+              ...current,
+              feed: current.feed.map((item) => {
+                if (item.id !== updated.id) return item;
+                if (refreshed)
+                  return previewReaction(item, updated.my_reaction ?? null);
+                return {
+                  ...item,
+                  my_reaction: updated.my_reaction,
+                  reactions: updated.reactions,
+                };
+              }),
+            },
+        );
+      } catch {
+        failure = { error: "Couldn't save your reaction. Tap to try again." };
+      }
+      if (write.desired !== sent) continue;
+      reactionWrites.current.delete(photo.id);
+      showReactionFeedback(photo.id, failure);
+      if (failure || needsRefresh) void refreshCurrent.current();
+      return;
+    }
   }
   async function loadMore() {
-    if (!detail?.next_cursor || loading) return;
+    if (!detail?.next_cursor || loading || !query.pages) return;
     const signal = query.controller.signal;
     setLoading(true);
-    const revision = detail.competition.revision;
-    const generation = sequence.current;
+    const base = latest.current;
+    const cursor = detail.next_cursor;
     try {
-      const page = await request<Detail>(
-        `/competitions/${id}?before=${detail.next_cursor}${player ? `&player=${encodeURIComponent(player)}` : ""}`,
-        { signal },
-      );
-      if (!signal.aborted && sequence.current === generation)
+      const page = await request<Detail>(query.pagePath + cursor, { signal });
+      if (!signal.aborted && latest.current === base) {
+        if (base?.battle?.status !== page.battle?.status) {
+          void refresh();
+          return;
+        }
+        query.pages++;
         setDetail((current) =>
-          current && current.competition.revision === revision
+          current && current.next_cursor === cursor
             ? {
                 ...current,
                 feed: [
@@ -96,6 +192,7 @@ export function useCompetition(id: string, player?: string) {
               }
             : current,
         );
+      }
     } catch (e) {
       if (!signal.aborted) setError((e as Error).message);
     } finally {
@@ -238,5 +335,26 @@ export function useCompetition(id: string, player?: string) {
       listener.remove();
     };
   }, [id]);
-  return { detail, error, connected, refresh, loadMore, loading, replacePhoto };
+  const visibleDetail = useMemo(() => {
+    if (!detail || reactionFeedback.size === 0) return detail;
+    return {
+      ...detail,
+      feed: detail.feed.map((photo) => {
+        const feedback = reactionFeedback.get(photo.id);
+        return feedback && "emoji" in feedback
+          ? previewReaction(photo, feedback.emoji)
+          : photo;
+      }),
+    };
+  }, [detail, reactionFeedback]);
+  return {
+    detail: visibleDetail,
+    error,
+    connected,
+    refresh,
+    loadMore,
+    loading,
+    react,
+    reactionFeedback,
+  };
 }
